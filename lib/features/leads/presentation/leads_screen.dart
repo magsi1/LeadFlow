@@ -50,7 +50,38 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('Leads', style: Theme.of(context).textTheme.headlineSmall),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 42,
+                      width: 42,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.people_alt_outlined, color: Theme.of(context).colorScheme.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Leads', style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${leads.length} result${leads.length == 1 ? '' : 's'}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             AppTextField(
               controller: _searchCtrl,
@@ -76,7 +107,8 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
                 _sourceMenu(context, ref, filters),
                 _tempMenu(context, ref, filters),
                 ActionChip(
-                  label: const Text('Clear Filters'),
+                  avatar: const Icon(Icons.clear_all, size: 16),
+                  label: const Text('Clear'),
                   onPressed: () {
                     _searchCtrl.clear();
                     ref.read(appStateProvider.notifier).updateFilters(const LeadFilters());

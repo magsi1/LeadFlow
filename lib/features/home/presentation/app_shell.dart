@@ -37,6 +37,7 @@ class AppShell extends ConsumerWidget {
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
+        height: 76,
         selectedIndex: index,
         onDestinationSelected: (i) => context.go(routes[i]),
         destinations: [

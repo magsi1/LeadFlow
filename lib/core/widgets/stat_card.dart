@@ -17,9 +17,10 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final accent = color ?? cs.primary;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -27,15 +28,23 @@ class StatCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: (color ?? cs.primary).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: color ?? cs.primary),
+                child: Icon(icon, color: accent, size: 19),
               ),
-            const SizedBox(height: 10),
-            Text(title, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 4),
-            Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.3),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),

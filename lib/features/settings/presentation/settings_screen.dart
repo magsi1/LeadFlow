@@ -42,7 +42,7 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         FilledButton.tonalIcon(
           onPressed: () async {
             final confirmed = await showDialog<bool>(
@@ -66,7 +66,7 @@ class SettingsScreen extends ConsumerWidget {
           icon: const Icon(Icons.refresh_rounded),
           label: const Text('Reset Demo Data'),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         FilledButton.tonalIcon(
           onPressed: () async {
             await ref.read(appStateProvider.notifier).signOut();

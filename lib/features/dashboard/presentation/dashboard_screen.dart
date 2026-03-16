@@ -39,20 +39,49 @@ class DashboardScreen extends ConsumerWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            state.isAdmin ? 'Admin Dashboard' : 'My Dashboard',
-            style: Theme.of(context).textTheme.headlineSmall,
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    height: 46,
+                    width: 46,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.insights_rounded, color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          state.isAdmin ? 'Admin Dashboard' : 'My Dashboard',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Welcome back, ${user.fullName}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 6),
-          Text('Welcome, ${user.fullName}'),
           const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,
-            childAspectRatio: 1.35,
+            childAspectRatio: 1.2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
             children: [
               StatCard(title: state.isAdmin ? 'Total Leads' : 'My Leads', value: '${viewLeads.length}', icon: Icons.people),
               StatCard(title: 'New Today', value: '$todayNew', icon: Icons.new_releases_outlined),
@@ -66,19 +95,36 @@ class DashboardScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Recent Activity', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  ...state.activities.take(8).map(
+                  const SizedBox(height: 10),
+                  if (state.activities.isEmpty)
+                    const EmptyState(
+                      title: 'No activity yet',
+                      subtitle: 'Activities will appear once leads are created or updated.',
+                      icon: Icons.timeline_outlined,
+                    )
+                  else
+                    ...state.activities.take(8).map(
                         (a) => ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.timeline, size: 18),
+                          leading: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.timeline, size: 16, color: Theme.of(context).colorScheme.primary),
+                          ),
                           title: Text(a.message),
-                          subtitle: Text(a.type),
+                          subtitle: Text(
+                            a.type.replaceAll('_', ' '),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700),
+                          ),
                         ),
                       ),
                 ],
