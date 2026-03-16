@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function sameBusiness(resourceBusinessId) {
+      return isSignedIn() && userDoc().data.businessId == resourceBusinessId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userDoc().data.role == 'admin';
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /businesses/{businessId} {
+      allow read: if sameBusiness(businessId);
+      allow write: if isAdmin() && sameBusiness(businessId);
+    }
+
+    match /leads/{leadId} {
+      allow read: if sameBusiness(resource.data.businessId);
+      allow create: if isSignedIn() && sameBusiness(request.resource.data.businessId);
+      allow update: if isSignedIn() && sameBusiness(resource.data.businessId);
+      allow delete: if isAdmin() && sameBusiness(resource.data.businessId);
+    }
+
+    match /activities/{activityId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /followups/{followupId} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+  }
+}
