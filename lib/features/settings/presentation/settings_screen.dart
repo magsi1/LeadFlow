@@ -42,6 +42,16 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('Integrations'),
+            subtitle: const Text('WhatsApp, Instagram, Facebook and webhook status'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push(RoutePaths.integrations),
+          ),
+        ),
         const SizedBox(height: 16),
         FilledButton.tonalIcon(
           onPressed: () async {

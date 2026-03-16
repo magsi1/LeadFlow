@@ -9,6 +9,8 @@ import '../../features/auth/presentation/signup_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/followups/presentation/followup_screen.dart';
 import '../../features/home/presentation/app_shell.dart';
+import '../../features/inbox/presentation/inbox_screen.dart';
+import '../../features/integrations/presentation/integrations_screen.dart';
 import '../../features/leads/presentation/add_edit_lead_screen.dart';
 import '../../features/leads/presentation/lead_details_screen.dart';
 import '../../features/leads/presentation/leads_screen.dart';
@@ -50,6 +52,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __, child) => AppShell(child: child),
         routes: [
           GoRoute(path: RoutePaths.dashboard, builder: (_, __) => const DashboardScreen()),
+          GoRoute(path: RoutePaths.inbox, builder: (_, __) => const InboxScreen()),
           GoRoute(path: RoutePaths.leads, builder: (_, __) => const LeadsScreen()),
           GoRoute(path: RoutePaths.followUps, builder: (_, __) => const FollowUpScreen()),
           GoRoute(path: RoutePaths.reports, builder: (_, __) => const ReportsScreen()),
@@ -57,6 +60,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: RoutePaths.settings, builder: (_, __) => const SettingsScreen()),
         ],
       ),
+      GoRoute(path: RoutePaths.integrations, builder: (_, __) => const IntegrationsScreen()),
       GoRoute(
         path: RoutePaths.addLead,
         builder: (_, state) => AddEditLeadScreen(editId: state.uri.queryParameters['editId']),

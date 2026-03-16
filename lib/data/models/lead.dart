@@ -31,6 +31,7 @@ class Lead {
     required this.updatedAt,
     this.nextFollowUpAt,
     required this.notesSummary,
+    this.sourceMetadata = const {},
     required this.isArchived,
     required this.isDeleted,
   });
@@ -54,6 +55,7 @@ class Lead {
   final DateTime updatedAt;
   final DateTime? nextFollowUpAt;
   final String notesSummary;
+  final Map<String, dynamic> sourceMetadata;
   final bool isArchived;
   final bool isDeleted;
 
@@ -73,6 +75,7 @@ class Lead {
     DateTime? updatedAt,
     DateTime? nextFollowUpAt,
     String? notesSummary,
+    Map<String, dynamic>? sourceMetadata,
   }) {
     return Lead(
       id: id,
@@ -94,6 +97,7 @@ class Lead {
       updatedAt: updatedAt ?? this.updatedAt,
       nextFollowUpAt: nextFollowUpAt ?? this.nextFollowUpAt,
       notesSummary: notesSummary ?? this.notesSummary,
+      sourceMetadata: sourceMetadata ?? this.sourceMetadata,
       isArchived: isArchived,
       isDeleted: isDeleted,
     );
@@ -119,6 +123,7 @@ class Lead {
         'updatedAt': updatedAt.toIso8601String(),
         'nextFollowUpAt': nextFollowUpAt?.toIso8601String(),
         'notesSummary': notesSummary,
+        'sourceMetadata': sourceMetadata,
         'isArchived': isArchived,
         'isDeleted': isDeleted,
       };
@@ -149,6 +154,7 @@ class Lead {
         updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ?? DateTime.now(),
         nextFollowUpAt: DateTime.tryParse(map['nextFollowUpAt']?.toString() ?? ''),
         notesSummary: map['notesSummary'] as String? ?? '',
+        sourceMetadata: (map['sourceMetadata'] as Map<String, dynamic>?) ?? const {},
         isArchived: map['isArchived'] as bool? ?? false,
         isDeleted: map['isDeleted'] as bool? ?? false,
       );
