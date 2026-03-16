@@ -63,7 +63,7 @@ class DashboardScreen extends ConsumerWidget {
           return ListView(
             padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 16, vertical: 16),
             children: [
-              _header(context, user.fullName, isDesktop),
+              _header(context, ref, user.fullName, isDesktop),
               const SizedBox(height: 14),
               GridView.count(
                 crossAxisCount: statsCrossAxis,
@@ -78,6 +78,18 @@ class DashboardScreen extends ConsumerWidget {
                     label: state.isAdmin ? 'Total Leads' : 'My Leads',
                     value: '${viewLeads.length}',
                     helper: 'Active pipeline',
+                    onTap: () => _openLeadsWithFilter(
+                      context,
+                      ref,
+                      state.filters.copyWith(
+                        clearStatus: true,
+                        clearSource: true,
+                        clearAssignedTo: true,
+                        clearTemperature: true,
+                        clearCity: true,
+                        followUpDueOnly: false,
+                      ),
+                    ),
                   ),
                   DashboardStatCard(
                     icon: Icons.fiber_new_rounded,
@@ -85,6 +97,18 @@ class DashboardScreen extends ConsumerWidget {
                     value: '$todayNew',
                     helper: todayNew > 0 ? '+$todayNew fresh inquiries' : 'No fresh inquiries',
                     accent: Colors.indigo,
+                    onTap: () => _openLeadsWithFilter(
+                      context,
+                      ref,
+                      state.filters.copyWith(
+                        status: LeadStatus.leadNew,
+                        clearSource: true,
+                        clearAssignedTo: true,
+                        clearTemperature: true,
+                        clearCity: true,
+                        followUpDueOnly: false,
+                      ),
+                    ),
                   ),
                   DashboardStatCard(
                     icon: Icons.alarm_on_rounded,
@@ -92,6 +116,18 @@ class DashboardScreen extends ConsumerWidget {
                     value: '$dueToday',
                     helper: hot > 0 ? '$hot hot leads in pipeline' : 'Track pending callbacks',
                     accent: Colors.orange,
+                    onTap: () => _openLeadsWithFilter(
+                      context,
+                      ref,
+                      state.filters.copyWith(
+                        clearStatus: true,
+                        clearSource: true,
+                        clearAssignedTo: true,
+                        clearTemperature: true,
+                        clearCity: true,
+                        followUpDueOnly: true,
+                      ),
+                    ),
                   ),
                   DashboardStatCard(
                     icon: Icons.check_circle_outline_rounded,
@@ -99,6 +135,18 @@ class DashboardScreen extends ConsumerWidget {
                     value: '$won',
                     helper: '${(conversionRate * 100).toStringAsFixed(0)}% conversion',
                     accent: Colors.green,
+                    onTap: () => _openLeadsWithFilter(
+                      context,
+                      ref,
+                      state.filters.copyWith(
+                        status: LeadStatus.closedWon,
+                        clearSource: true,
+                        clearAssignedTo: true,
+                        clearTemperature: true,
+                        clearCity: true,
+                        followUpDueOnly: false,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -151,7 +199,7 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, String fullName, bool isDesktop) {
+  Widget _header(BuildContext context, WidgetRef ref, String fullName, bool isDesktop) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -183,13 +231,22 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: TextField(
+                      onChanged: (value) {
+                        final filters = ref.read(appStateProvider).filters;
+                        ref.read(appStateProvider.notifier).updateFilters(filters.copyWith(search: value.trim()));
+                      },
+                      onSubmitted: (value) => _applySearch(context, ref, value),
                       decoration: InputDecoration(
-                        hintText: 'Search leads, city, phone...',
-                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search leads, city, phone, source...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          tooltip: 'Search in leads',
+                          onPressed: () => _applySearch(context, ref, ref.read(appStateProvider).filters.search),
+                          icon: const Icon(Icons.arrow_forward_rounded),
+                        ),
                       ),
-                      readOnly: true,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -403,5 +460,17 @@ class DashboardScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _openLeadsWithFilter(BuildContext context, WidgetRef ref, LeadFilters filters) {
+    ref.read(appStateProvider.notifier).updateFilters(filters);
+    context.go(RoutePaths.leads);
+  }
+
+  void _applySearch(BuildContext context, WidgetRef ref, String value) {
+    final text = value.trim();
+    final filters = ref.read(appStateProvider).filters;
+    ref.read(appStateProvider.notifier).updateFilters(filters.copyWith(search: text));
+    context.go(RoutePaths.leads);
   }
 }

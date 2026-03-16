@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../config/app_config.dart';
 import '../../features/app_state/providers.dart';
 import '../../features/auth/presentation/forgot_password_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
@@ -28,6 +29,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final appState = ref.read(appStateProvider);
+      const authRequired = !AppConfig.demoModeEnabled;
       final isAuth = appState.isAuthenticated;
       final isSplash = state.matchedLocation == RoutePaths.splash;
       final isAuthRoute = {
@@ -38,8 +40,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       if (appState.loading && !isSplash) return RoutePaths.splash;
       if (appState.loading && isSplash) return null;
-      if (!isAuth && !isAuthRoute) return RoutePaths.login;
-      if (isAuth && (isAuthRoute || isSplash)) return RoutePaths.dashboard;
+      if (authRequired && !isAuth && !isAuthRoute) return RoutePaths.login;
+      if (authRequired && isAuth && (isAuthRoute || isSplash)) return RoutePaths.dashboard;
+      if (!authRequired && isSplash) return RoutePaths.dashboard;
+      if (!authRequired && isAuthRoute) return RoutePaths.dashboard;
       if (!appState.isAdmin && state.matchedLocation == RoutePaths.team) return RoutePaths.dashboard;
       return null;
     },
@@ -63,7 +67,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: RoutePaths.integrations, builder: (_, __) => const IntegrationsScreen()),
       GoRoute(
         path: RoutePaths.addLead,
-        builder: (_, state) => AddEditLeadScreen(editId: state.uri.queryParameters['editId']),
+        builder: (_, state) => AddEditLeadScreen(
+          editId: state.uri.queryParameters['editId'],
+          prefillName: state.uri.queryParameters['name'],
+          prefillSource: state.uri.queryParameters['source'],
+          prefillInquiry: state.uri.queryParameters['inquiry'],
+          prefillCity: state.uri.queryParameters['city'],
+          conversationId: state.uri.queryParameters['conversationId'],
+        ),
       ),
       GoRoute(
         path: '${RoutePaths.leadDetails}/:id',

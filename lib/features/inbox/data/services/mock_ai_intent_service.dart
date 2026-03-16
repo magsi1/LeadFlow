@@ -9,7 +9,7 @@ class MockAiIntentService implements AiIntentService {
     required Conversation conversation,
     required List<UnifiedMessage> messages,
   }) async {
-    if (!AppConfig.aiModeEnabled || AppConfig.openAiApiKey.isEmpty) {
+    if (!AppConfig.aiModeEnabled && !AppConfig.demoModeEnabled) {
       return null;
     }
     final latest = messages.isEmpty ? conversation.lastMessagePreview : messages.last.text;

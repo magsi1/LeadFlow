@@ -32,6 +32,35 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<AppUser> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    if (password.length < 6) {
+      throw Exception('Password must be at least 6 characters.');
+    }
+    final existing = _users.where((u) => u.email.toLowerCase() == email.toLowerCase()).firstOrNull;
+    if (existing != null) {
+      throw Exception('An account already exists for this email.');
+    }
+    final user = AppUser(
+      id: 'u_${DateTime.now().microsecondsSinceEpoch}',
+      fullName: fullName.trim(),
+      email: email.trim(),
+      phone: '',
+      role: UserRole.salesperson,
+      businessId: 'biz_demo_1',
+      isActive: true,
+      createdAt: DateTime.now(),
+    );
+    _users.add(user);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sessionKey, user.id);
+    return user;
+  }
+
+  @override
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);

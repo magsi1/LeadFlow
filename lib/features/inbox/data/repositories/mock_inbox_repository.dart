@@ -1,4 +1,5 @@
 import '../../../../shared/models/channel_type.dart';
+import 'dart:async';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/unified_message.dart';
 import '../../domain/repositories/inbox_repository.dart';
@@ -11,17 +12,26 @@ class MockInboxRepository implements InboxRepository {
 
   late List<Conversation> _conversations;
   late List<UnifiedMessage> _messages;
+  final StreamController<List<Conversation>> _conversationsStream = StreamController.broadcast();
+  final Map<String, StreamController<List<UnifiedMessage>>> _messagesStreams = {};
 
   @override
   Future<void> assignConversation(String conversationId, String userId) async {
     _conversations = _conversations
         .map((c) => c.id == conversationId ? c.copyWith(assignedTo: userId) : c)
         .toList();
+    _emitConversations();
   }
 
   @override
   Future<List<Conversation>> fetchConversations() async =>
       _conversations..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+
+  @override
+  Stream<List<Conversation>> watchConversations() async* {
+    yield await fetchConversations();
+    yield* _conversationsStream.stream;
+  }
 
   @override
   Future<List<UnifiedMessage>> fetchMessages(String conversationId) async {
@@ -31,10 +41,18 @@ class MockInboxRepository implements InboxRepository {
   }
 
   @override
+  Stream<List<UnifiedMessage>> watchMessages(String conversationId) async* {
+    yield await fetchMessages(conversationId);
+    final ctrl = _messagesStreams.putIfAbsent(conversationId, () => StreamController.broadcast());
+    yield* ctrl.stream;
+  }
+
+  @override
   Future<void> linkLead(String conversationId, String leadId) async {
     _conversations = _conversations
         .map((c) => c.id == conversationId ? c.copyWith(leadId: leadId, stage: InboxLeadStage.contacted) : c)
         .toList();
+    _emitConversations();
   }
 
   @override
@@ -66,6 +84,8 @@ class MockInboxRepository implements InboxRepository {
               : c,
         )
         .toList();
+    _emitConversations();
+    _emitMessages(conversationId);
   }
 
   @override
@@ -73,6 +93,20 @@ class MockInboxRepository implements InboxRepository {
     _conversations = _conversations
         .map((c) => c.id == conversationId ? c.copyWith(stage: stage) : c)
         .toList();
+    _emitConversations();
+  }
+
+  void _emitConversations() {
+    final list = [..._conversations]..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+    _conversationsStream.add(list);
+  }
+
+  void _emitMessages(String conversationId) {
+    final ctrl = _messagesStreams[conversationId];
+    if (ctrl == null) return;
+    final list = _messages.where((m) => m.conversationId == conversationId).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    ctrl.add(list);
   }
 
   List<Conversation> _seedConversations() {
@@ -92,6 +126,7 @@ class MockInboxRepository implements InboxRepository {
         assignedTo: 'u_sales_1',
         intent: BuyingIntent.high,
         stage: InboxLeadStage.leadNew,
+        sourceMetadata: const {'city': 'Karachi'},
       ),
       Conversation(
         id: 'conv_ig_1',
@@ -106,6 +141,7 @@ class MockInboxRepository implements InboxRepository {
         assignedTo: null,
         intent: BuyingIntent.medium,
         stage: InboxLeadStage.followUp,
+        sourceMetadata: const {'city': 'Lahore'},
       ),
       Conversation(
         id: 'conv_fb_1',
@@ -120,6 +156,7 @@ class MockInboxRepository implements InboxRepository {
         assignedTo: 'u_sales_2',
         intent: BuyingIntent.medium,
         stage: InboxLeadStage.contacted,
+        sourceMetadata: const {'city': 'Hyderabad'},
       ),
       Conversation(
         id: 'conv_fb_comment_1',
@@ -135,6 +172,7 @@ class MockInboxRepository implements InboxRepository {
         intent: BuyingIntent.high,
         stage: InboxLeadStage.leadNew,
         isCommentThread: true,
+        sourceMetadata: const {'city': 'Islamabad'},
       ),
       Conversation(
         id: 'conv_ig_comment_1',
@@ -149,6 +187,7 @@ class MockInboxRepository implements InboxRepository {
         intent: BuyingIntent.high,
         stage: InboxLeadStage.qualified,
         isCommentThread: true,
+        sourceMetadata: const {'city': 'Quetta'},
       ),
     ];
   }

@@ -1,4 +1,24 @@
 class AppConfig {
+  static const appEnv = String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: 'demo',
+  );
+
+  static const environmentName = String.fromEnvironment(
+    'LEADFLOW_ENV',
+    defaultValue: 'demo',
+  );
+
+  static const supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: '',
+  );
+
+  static const supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: '',
+  );
+
   static const backendBaseUrl = String.fromEnvironment(
     'LEADFLOW_BACKEND_BASE_URL',
     defaultValue: 'https://api.leadflow.local',
@@ -33,4 +53,17 @@ class AppConfig {
     'LEADFLOW_AI_MODE',
     defaultValue: false,
   );
+
+  static bool get isSupabaseConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+
+  static bool get wantsSupabase {
+    final env = appEnv.toLowerCase();
+    final legacyEnv = environmentName.toLowerCase();
+    return env == 'supabase' || legacyEnv == 'supabase';
+  }
+
+  static bool get useSupabase {
+    if (demoModeEnabled) return false;
+    return isSupabaseConfigured && wantsSupabase;
+  }
 }

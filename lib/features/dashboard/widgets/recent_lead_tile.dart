@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/lead.dart';
+import '../../leads/widgets/lead_status_chip.dart';
 
 class RecentLeadTile extends StatelessWidget {
   const RecentLeadTile({
@@ -23,9 +24,22 @@ class RecentLeadTile extends StatelessWidget {
     };
   }
 
+  (String, Color) _statusView() {
+    return switch (lead.status) {
+      LeadStatus.leadNew => ('New', Colors.indigo),
+      LeadStatus.contacted => ('Contacted', Colors.blue),
+      LeadStatus.interested => ('Qualified', Colors.green),
+      LeadStatus.followUpNeeded => ('Follow-up', Colors.orange),
+      LeadStatus.negotiation => ('Qualified', Colors.deepPurple),
+      LeadStatus.closedWon => ('Won', Colors.teal),
+      LeadStatus.closedLost => ('Lost', Colors.redAccent),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final tone = _temperatureColor();
+    final (statusLabel, statusColor) = _statusView();
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -83,6 +97,12 @@ class RecentLeadTile extends StatelessWidget {
                     lead.temperature.name.toUpperCase(),
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tone),
                   ),
+                ),
+                const SizedBox(height: 6),
+                LeadStatusChip(
+                  label: statusLabel,
+                  color: statusColor,
+                  compact: true,
                 ),
                 const SizedBox(height: 6),
                 Text(

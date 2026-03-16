@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +20,10 @@ class MockLeadRepository implements LeadRepository {
   List<Activity> _activities = [];
   List<FollowUp> _followUps = [];
   bool _isInitialized = false;
+  final StreamController<void> _changes = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> watchDataChanges() => _changes.stream;
 
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return;
@@ -77,6 +82,7 @@ class MockLeadRepository implements LeadRepository {
     await _ensureInitialized();
     _activities = [activity, ..._activities];
     await _persist();
+    _changes.add(null);
   }
 
   @override
@@ -104,10 +110,12 @@ class MockLeadRepository implements LeadRepository {
     if (index == -1) {
       _leads = [lead, ..._leads];
       await _persist();
+      _changes.add(null);
       return lead;
     }
     _leads[index] = lead;
     await _persist();
+    _changes.add(null);
     return lead;
   }
 
@@ -118,10 +126,12 @@ class MockLeadRepository implements LeadRepository {
     if (index == -1) {
       _followUps = [followUp, ..._followUps];
       await _persist();
+      _changes.add(null);
       return;
     }
     _followUps[index] = followUp;
     await _persist();
+    _changes.add(null);
   }
 
   @override
@@ -132,5 +142,6 @@ class MockLeadRepository implements LeadRepository {
     await prefs.remove(_followUpsKey);
     await _seedAndPersist(prefs);
     _isInitialized = true;
+    _changes.add(null);
   }
 }

@@ -14,6 +14,9 @@ class FirebaseLeadRepository implements LeadRepository {
   CollectionReference<Map<String, dynamic>> get _followUpsRef => _firestore.collection('followups');
 
   @override
+  Stream<void> watchDataChanges() => const Stream.empty();
+
+  @override
   Future<void> addActivity(Activity activity) async {
     await _activitiesRef.doc(activity.id).set({
       'id': activity.id,

@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:async';
 
+import '../../core/config/app_config.dart';
 import '../../core/utils/iterable_extensions.dart';
 import '../../data/models/activity.dart';
 import '../../data/models/app_user.dart';
@@ -26,6 +28,8 @@ class AppStateNotifier extends StateNotifier<AppState> {
   final LeadRepository _leadRepository;
   final TeamRepository _teamRepository;
   final _uuid = const Uuid();
+  StreamSubscription<void>? _dataSubscription;
+  Timer? _refreshDebounce;
 
   Future<T?> _safeLoad<T>(String label, Future<T> Function() task) async {
     try {
@@ -51,7 +55,10 @@ class AppStateNotifier extends StateNotifier<AppState> {
     // Web demo fallback: auto-enter app if no auth session and demo data exists.
     final fallbackDemoUser = team.where((u) => u.role == UserRole.admin).cast<AppUser?>().firstOrNull ??
         team.cast<AppUser?>().firstOrNull;
-    final effectiveUser = user ?? ((kIsWeb && leads.isNotEmpty) ? fallbackDemoUser : null);
+    final effectiveUser = user ??
+        ((AppConfig.demoModeEnabled && kIsWeb && leads.isNotEmpty && fallbackDemoUser != null)
+            ? fallbackDemoUser
+            : null);
 
     if (effectiveUser != null && user == null && kIsWeb) {
       debugPrint('[LeadFlow] No session found. Using web demo fallback user.');
@@ -66,6 +73,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
       loading: false,
     );
     debugPrint('[LeadFlow] AppState initialize complete');
+    _bindRealtimeSync();
   }
 
   Future<void> signIn({required String email, required String password}) async {
@@ -73,6 +81,22 @@ class AppStateNotifier extends StateNotifier<AppState> {
     try {
       final user = await _authRepository.signIn(email: email, password: password);
       state = state.copyWith(currentUser: user, loading: false);
+    } catch (e) {
+      state = state.copyWith(loading: false, error: e.toString());
+      rethrow;
+    }
+  }
+
+  Future<void> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final user = await _authRepository.signUp(fullName: fullName, email: email, password: password);
+      state = state.copyWith(currentUser: user, loading: false);
+      await refreshData();
     } catch (e) {
       state = state.copyWith(loading: false, error: e.toString());
       rethrow;
@@ -206,5 +230,41 @@ class AppStateNotifier extends StateNotifier<AppState> {
     } catch (e) {
       state = state.copyWith(loading: false, error: e.toString());
     }
+  }
+
+  Future<void> logActivity({
+    required String type,
+    required String message,
+    String? leadId,
+    Map<String, dynamic>? metadata,
+  }) async {
+    await _leadRepository.addActivity(
+      Activity(
+        id: _uuid.v4(),
+        leadId: leadId ?? '',
+        type: type,
+        message: message,
+        performedBy: state.currentUser?.id ?? 'system',
+        createdAt: DateTime.now(),
+        metadata: metadata ?? const {},
+      ),
+    );
+  }
+
+  void _bindRealtimeSync() {
+    _dataSubscription?.cancel();
+    _dataSubscription = _leadRepository.watchDataChanges().listen((_) {
+      _refreshDebounce?.cancel();
+      _refreshDebounce = Timer(const Duration(milliseconds: 220), () async {
+        await refreshData();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshDebounce?.cancel();
+    _dataSubscription?.cancel();
+    super.dispose();
   }
 }

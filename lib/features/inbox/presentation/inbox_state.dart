@@ -14,6 +14,7 @@ class InboxState {
     this.onlyFollowUpDue = false,
     this.onlyConverted = false,
     this.loading = false,
+    this.actionLoading = false,
     this.error,
   });
 
@@ -27,6 +28,7 @@ class InboxState {
   final bool onlyFollowUpDue;
   final bool onlyConverted;
   final bool loading;
+  final bool actionLoading;
   final String? error;
 
   InboxState copyWith({
@@ -42,6 +44,7 @@ class InboxState {
     bool? onlyFollowUpDue,
     bool? onlyConverted,
     bool? loading,
+    bool? actionLoading,
     String? error,
     bool clearError = false,
   }) {
@@ -57,6 +60,7 @@ class InboxState {
       onlyFollowUpDue: onlyFollowUpDue ?? this.onlyFollowUpDue,
       onlyConverted: onlyConverted ?? this.onlyConverted,
       loading: loading ?? this.loading,
+      actionLoading: actionLoading ?? this.actionLoading,
       error: clearError ? null : error ?? this.error,
     );
   }

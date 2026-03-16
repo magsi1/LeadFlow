@@ -44,6 +44,8 @@ It focuses on practical sales operations:
   - Cloud Firestore
   - Firebase Cloud Messaging
 - SharedPreferences (session persistence in demo mode)
+- HTTP backend client for API mode
+- Supabase-ready data persistence mode
 
 ## Folder Structure
 
@@ -89,6 +91,10 @@ lib/
         mock_auth_repository.dart
         mock_lead_repository.dart
         mock_team_repository.dart
+      remote/
+        remote_auth_repository.dart
+        remote_lead_repository.dart
+        remote_team_repository.dart
     services/
       firebase_service.dart
       mock_seed_service.dart
@@ -153,10 +159,30 @@ Primary fields are mapped in the model classes:
    - `flutter doctor`
 2. In project root:
    - `flutter pub get`
-3. Run app:
-   - `flutter run`
+3. Run in demo mode (default):
+   - `flutter run -d chrome --web-hostname 127.0.0.1`
+4. Run with real backend mode:
+   - `flutter run -d chrome --web-hostname 127.0.0.1 --dart-define=LEADFLOW_DEMO_MODE=false --dart-define=LEADFLOW_BACKEND_BASE_URL=https://api.your-domain.com --dart-define=LEADFLOW_AUTH_TOKEN=your-token`
+5. Run with Supabase mode:
+   - `flutter run -d chrome --web-hostname 127.0.0.1 --dart-define=LEADFLOW_DEMO_MODE=false --dart-define=APP_ENV=supabase --dart-define=SUPABASE_URL=https://xyz.supabase.co --dart-define=SUPABASE_ANON_KEY=your-anon-key`
 
-## Firebase Setup (Optional but Recommended)
+## Environment Configuration
+
+LeadFlow reads runtime configuration from Dart defines (`String.fromEnvironment`):
+- `APP_ENV`
+- `LEADFLOW_DEMO_MODE`
+- `LEADFLOW_BACKEND_BASE_URL`
+- `LEADFLOW_AUTH_TOKEN`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `LEADFLOW_OPENAI_API_KEY`
+- `LEADFLOW_META_APP_ID`
+- `LEADFLOW_META_CONFIG_ID`
+- `LEADFLOW_AI_MODE`
+
+Use `.env.example` as a reference and pass values using `--dart-define` (or `--dart-define-from-file` on supported Flutter versions).
+
+## Firebase Setup (Optional)
 
 1. Create Firebase project.
 2. Add Android and iOS apps.
@@ -166,11 +192,82 @@ Primary fields are mapped in the model classes:
 4. Ensure generated `firebase_options.dart` exists.
 5. Update `FirebaseService.initialize()` to use:
    - `Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`
-6. Replace mock repositories with Firebase repositories in `features/app_state/providers.dart`.
+6. For Firebase-only deployment, you can still swap providers in `features/app_state/providers.dart`.
+   The current MVP now supports API-backed repositories without changing UI/navigation.
 
 ## Security Rules
 
 Use the sample file in `firestore.rules` as a starting point.
+
+## Omnichannel Backend Integration Points
+
+The app is wired for business-account-ready channel integration via backend APIs:
+- WhatsApp Business: `/api/integrations/:id/connect`, `/api/messages/send`
+- Instagram Business: `/api/integrations/:id/connect`, `/api/conversations`, `/api/conversations/:id/messages`
+- Facebook Page/Messenger: `/api/integrations/:id/connect`, `/api/conversations`, `/api/messages/send`
+
+Unified inbox and integration settings continue to work in demo mode, and switch to remote repositories when `LEADFLOW_DEMO_MODE=false`.
+
+## Supabase Schema
+
+A starter schema/migration set is included at:
+- `supabase/migrations/20260316_0001_crm_schema.sql`
+- `supabase/migrations/20260316_0002_rls_policies.sql`
+- `supabase/migrations/20260316_0003_seed_demo_data.sql`
+
+Tables covered:
+- `profiles`
+- `salespeople`
+- `leads`
+- `conversations`
+- `messages`
+- `follow_ups`
+- `activities`
+- `integration_accounts`
+- `workspaces` (future-ready)
+
+## Supabase Migration Steps
+
+1. Create a Supabase project.
+2. Open SQL editor and run:
+   - `20260316_0001_crm_schema.sql`
+   - `20260316_0002_rls_policies.sql`
+3. (Optional) Run `20260316_0003_seed_demo_data.sql` after replacing demo UUIDs with real auth user IDs.
+4. Set runtime defines:
+   - `LEADFLOW_DEMO_MODE=false`
+   - `APP_ENV=supabase`
+   - `SUPABASE_URL=...`
+   - `SUPABASE_ANON_KEY=...`
+
+## Auth Modes
+
+- **Demo mode** (`LEADFLOW_DEMO_MODE=true`):
+  - Uses local/mock repositories.
+  - No external auth required.
+- **Supabase mode** (`APP_ENV=supabase`, demo false, keys set):
+  - Uses Supabase Auth/session.
+  - Login/signup routes are enforced by router guard.
+- **Fallback safety**:
+  - If Supabase mode is requested but keys are missing, repositories safely fall back to mock implementations.
+
+## Supabase Realtime Behavior
+
+When Supabase mode is enabled, LeadFlow subscribes to live updates for:
+- `conversations`
+- `messages`
+- `leads`
+- `follow_ups`
+- `activities`
+
+Realtime sync behavior:
+- Inbox conversation list reorders automatically by latest activity.
+- Selected conversation message thread streams live updates.
+- Dashboard/Leads/Follow-ups refresh from repository stream signals.
+- Activity timeline in Inbox detail updates live from `activities`.
+
+Demo mode behavior:
+- Realtime watchers use local/mock streams or no-op fallback.
+- App remains fully usable without Supabase configuration.
 
 ## Extension Points for Next Phase
 
@@ -184,6 +281,7 @@ Use the sample file in `firestore.rules` as a starting point.
 
 ## Notes
 
-- Current MVP defaults to mock repositories for immediate preview.
-- Firebase repositories are included and ready for switching.
+- Current MVP defaults to demo repositories for immediate preview.
+- Set `LEADFLOW_DEMO_MODE=false` to switch to backend-ready repositories.
+- Integrations/Inbox have backend repository implementations and stay demo-safe if APIs are not configured.
 - The architecture is intentionally clean but lightweight to avoid overengineering.

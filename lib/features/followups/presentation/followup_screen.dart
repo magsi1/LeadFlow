@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_paths.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/iterable_extensions.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../data/models/follow_up.dart';
 import '../../app_state/providers.dart';
@@ -61,8 +62,13 @@ class FollowUpScreen extends ConsumerWidget {
       itemCount: items.length,
       itemBuilder: (_, i) {
         final f = items[i];
-        final lead = state.leads.firstWhere((l) => l.id == f.leadId);
-        final staff = state.team.firstWhere((u) => u.id == f.assignedTo, orElse: () => state.team.first).fullName;
+        final lead = state.leads.where((l) => l.id == f.leadId).firstOrNull;
+        if (lead == null) {
+          return const SizedBox.shrink();
+        }
+        final fallbackStaff = state.team.firstOrNull?.fullName ?? 'Unassigned';
+        final staff =
+            state.team.where((u) => u.id == f.assignedTo).firstOrNull?.fullName ?? fallbackStaff;
         return Card(
           child: ListTile(
             title: Text(lead.customerName),

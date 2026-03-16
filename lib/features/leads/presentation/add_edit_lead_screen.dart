@@ -1,17 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/iterable_extensions.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../data/models/lead.dart';
 import '../../app_state/providers.dart';
+import '../../inbox/presentation/providers.dart';
 
 class AddEditLeadScreen extends ConsumerStatefulWidget {
-  const AddEditLeadScreen({super.key, this.editId});
+  const AddEditLeadScreen({
+    super.key,
+    this.editId,
+    this.prefillName,
+    this.prefillSource,
+    this.prefillInquiry,
+    this.prefillCity,
+    this.conversationId,
+  });
 
   final String? editId;
+  final String? prefillName;
+  final String? prefillSource;
+  final String? prefillInquiry;
+  final String? prefillCity;
+  final String? conversationId;
 
   @override
   ConsumerState<AddEditLeadScreen> createState() => _AddEditLeadScreenState();
@@ -37,6 +52,15 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
 
   Lead? _editingLead;
 
+  static const List<LeadStatus> _statusFlow = [
+    LeadStatus.leadNew,
+    LeadStatus.contacted,
+    LeadStatus.interested,
+    LeadStatus.followUpNeeded,
+    LeadStatus.closedWon,
+    LeadStatus.closedLost,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +83,13 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
         _temperature = lead.temperature;
         _followUpDate = lead.nextFollowUpAt;
         _assignedTo = lead.assignedTo;
+      }
+    } else {
+      _name.text = widget.prefillName?.trim() ?? '';
+      _inquiry.text = widget.prefillInquiry?.trim() ?? '';
+      _city.text = widget.prefillCity?.trim() ?? '';
+      if (widget.prefillSource != null && AppConstants.leadSources.contains(widget.prefillSource)) {
+        _source = widget.prefillSource!;
       }
     }
   }
@@ -118,10 +149,26 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
       isDeleted: false,
     );
 
-    await ref.read(appStateProvider.notifier).saveLead(lead, isNew: _editingLead == null);
+    if (widget.conversationId != null && widget.conversationId!.isNotEmpty) {
+      await ref.read(inboxStateProvider.notifier).saveLeadFromConversation(
+            lead: lead,
+            isNew: _editingLead == null,
+            conversationId: widget.conversationId!,
+          );
+    } else {
+      await ref.read(appStateProvider.notifier).saveLead(lead, isNew: _editingLead == null);
+    }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead saved successfully')));
-    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.conversationId != null && widget.conversationId!.isNotEmpty
+              ? 'Lead saved and linked to conversation.'
+              : 'Lead saved successfully',
+        ),
+      ),
+    );
+    context.pop();
   }
 
   @override
@@ -180,7 +227,9 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
                 const SizedBox(height: 10),
                 DropdownButtonFormField<LeadStatus>(
                   initialValue: _status,
-                  items: LeadStatus.values.map((e) => DropdownMenuItem(value: e, child: Text(e.name))).toList(),
+                  items: _statusFlow
+                      .map((e) => DropdownMenuItem(value: e, child: Text(_statusLabel(e))))
+                      .toList(),
                   onChanged: (v) => setState(() => _status = v ?? _status),
                   decoration: const InputDecoration(labelText: 'Status'),
                 ),
@@ -214,5 +263,17 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
         ],
       ),
     );
+  }
+
+  String _statusLabel(LeadStatus status) {
+    return switch (status) {
+      LeadStatus.leadNew => 'New',
+      LeadStatus.contacted => 'Contacted',
+      LeadStatus.interested => 'Qualified',
+      LeadStatus.followUpNeeded => 'Follow-up',
+      LeadStatus.closedWon => 'Won',
+      LeadStatus.closedLost => 'Lost',
+      LeadStatus.negotiation => 'Qualified',
+    };
   }
 }

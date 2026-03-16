@@ -6,6 +6,7 @@ abstract class LeadRepository {
   Future<List<Lead>> fetchLeads();
   Future<List<Activity>> fetchActivities();
   Future<List<FollowUp>> fetchFollowUps();
+  Stream<void> watchDataChanges();
   Future<Lead> saveLead(Lead lead);
   Future<void> addActivity(Activity activity);
   Future<void> saveFollowUp(FollowUp followUp);

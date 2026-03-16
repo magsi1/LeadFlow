@@ -3,7 +3,9 @@ import '../entities/unified_message.dart';
 
 abstract class InboxRepository {
   Future<List<Conversation>> fetchConversations();
+  Stream<List<Conversation>> watchConversations();
   Future<List<UnifiedMessage>> fetchMessages(String conversationId);
+  Stream<List<UnifiedMessage>> watchMessages(String conversationId);
   Future<void> sendMessage({required String conversationId, required String text});
   Future<void> linkLead(String conversationId, String leadId);
   Future<void> assignConversation(String conversationId, String userId);
