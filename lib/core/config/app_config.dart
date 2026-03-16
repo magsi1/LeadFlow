@@ -1,0 +1,36 @@
+class AppConfig {
+  static const backendBaseUrl = String.fromEnvironment(
+    'LEADFLOW_BACKEND_BASE_URL',
+    defaultValue: 'https://api.leadflow.local',
+  );
+
+  static const authToken = String.fromEnvironment(
+    'LEADFLOW_AUTH_TOKEN',
+    defaultValue: '',
+  );
+
+  static const openAiApiKey = String.fromEnvironment(
+    'LEADFLOW_OPENAI_API_KEY',
+    defaultValue: '',
+  );
+
+  static const metaAppId = String.fromEnvironment(
+    'LEADFLOW_META_APP_ID',
+    defaultValue: '',
+  );
+
+  static const metaConfigId = String.fromEnvironment(
+    'LEADFLOW_META_CONFIG_ID',
+    defaultValue: '',
+  );
+
+  static const demoModeEnabled = bool.fromEnvironment(
+    'LEADFLOW_DEMO_MODE',
+    defaultValue: true,
+  );
+
+  static const aiModeEnabled = bool.fromEnvironment(
+    'LEADFLOW_AI_MODE',
+    defaultValue: false,
+  );
+}

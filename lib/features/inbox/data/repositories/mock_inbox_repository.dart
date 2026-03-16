@@ -1,0 +1,190 @@
+import '../../../../shared/models/channel_type.dart';
+import '../../domain/entities/conversation.dart';
+import '../../domain/entities/unified_message.dart';
+import '../../domain/repositories/inbox_repository.dart';
+
+class MockInboxRepository implements InboxRepository {
+  MockInboxRepository() {
+    _conversations = _seedConversations();
+    _messages = _seedMessages(_conversations);
+  }
+
+  late List<Conversation> _conversations;
+  late List<UnifiedMessage> _messages;
+
+  @override
+  Future<void> assignConversation(String conversationId, String userId) async {
+    _conversations = _conversations
+        .map((c) => c.id == conversationId ? c.copyWith(assignedTo: userId) : c)
+        .toList();
+  }
+
+  @override
+  Future<List<Conversation>> fetchConversations() async =>
+      _conversations..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+
+  @override
+  Future<List<UnifiedMessage>> fetchMessages(String conversationId) async {
+    final list = _messages.where((m) => m.conversationId == conversationId).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return list;
+  }
+
+  @override
+  Future<void> linkLead(String conversationId, String leadId) async {
+    _conversations = _conversations
+        .map((c) => c.id == conversationId ? c.copyWith(leadId: leadId, stage: InboxLeadStage.contacted) : c)
+        .toList();
+  }
+
+  @override
+  Future<void> sendMessage({required String conversationId, required String text}) async {
+    final conversation = _conversations.firstWhere((e) => e.id == conversationId);
+    _messages = [
+      ..._messages,
+      UnifiedMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        conversationId: conversationId,
+        channel: conversation.channel,
+        externalMessageId: 'ext_${DateTime.now().millisecondsSinceEpoch}',
+        externalUserId: 'leadflow_agent',
+        senderName: 'LeadFlow Agent',
+        text: text,
+        createdAt: DateTime.now(),
+        direction: 'outgoing',
+        status: 'sent',
+      ),
+    ];
+    _conversations = _conversations
+        .map(
+          (c) => c.id == conversationId
+              ? c.copyWith(
+                  lastMessagePreview: text,
+                  lastMessageAt: DateTime.now(),
+                  unreadCount: 0,
+                )
+              : c,
+        )
+        .toList();
+  }
+
+  @override
+  Future<void> updateConversationStage(String conversationId, InboxLeadStage stage) async {
+    _conversations = _conversations
+        .map((c) => c.id == conversationId ? c.copyWith(stage: stage) : c)
+        .toList();
+  }
+
+  List<Conversation> _seedConversations() {
+    final now = DateTime.now();
+    return [
+      Conversation(
+        id: 'conv_wa_1',
+        channel: ChannelType.whatsapp,
+        externalConversationId: 'wa_thread_101',
+        externalUserId: 'wa_user_hamza',
+        customerName: 'Hamza Qureshi',
+        customerPhone: '+923221114477',
+        customerHandle: 'hamza.q',
+        lastMessagePreview: 'Need 10kw system quote for DHA Karachi home.',
+        lastMessageAt: now.subtract(const Duration(minutes: 5)),
+        unreadCount: 2,
+        assignedTo: 'u_sales_1',
+        intent: BuyingIntent.high,
+        stage: InboxLeadStage.leadNew,
+      ),
+      Conversation(
+        id: 'conv_ig_1',
+        channel: ChannelType.instagram,
+        externalConversationId: 'ig_thread_201',
+        externalUserId: 'ig_nida_homes',
+        customerName: 'Nida Homes',
+        customerHandle: '@nida.homes',
+        lastMessagePreview: 'Interested in inverter setup for office in Lahore.',
+        lastMessageAt: now.subtract(const Duration(hours: 1)),
+        unreadCount: 1,
+        assignedTo: null,
+        intent: BuyingIntent.medium,
+        stage: InboxLeadStage.followUp,
+      ),
+      Conversation(
+        id: 'conv_fb_1',
+        channel: ChannelType.facebook,
+        externalConversationId: 'fb_msg_301',
+        externalUserId: 'fb_rashid',
+        customerName: 'Rashid Ali',
+        customerPhone: '+923004441155',
+        lastMessagePreview: 'Can you share payment plan for battery + inverter?',
+        lastMessageAt: now.subtract(const Duration(hours: 2)),
+        unreadCount: 0,
+        assignedTo: 'u_sales_2',
+        intent: BuyingIntent.medium,
+        stage: InboxLeadStage.contacted,
+      ),
+      Conversation(
+        id: 'conv_fb_comment_1',
+        channel: ChannelType.facebook,
+        externalConversationId: 'fb_comment_401',
+        externalUserId: 'fb_comment_user_1',
+        customerName: 'Adeel Motors',
+        customerHandle: 'Adeel Motors',
+        lastMessagePreview: 'Commented: price for 7kw setup please?',
+        lastMessageAt: now.subtract(const Duration(hours: 3)),
+        unreadCount: 3,
+        assignedTo: null,
+        intent: BuyingIntent.high,
+        stage: InboxLeadStage.leadNew,
+        isCommentThread: true,
+      ),
+      Conversation(
+        id: 'conv_ig_comment_1',
+        channel: ChannelType.instagram,
+        externalConversationId: 'ig_comment_501',
+        externalUserId: 'ig_comment_biz',
+        customerName: 'Quetta Heights',
+        lastMessagePreview: 'Commented on reel: need urgent solar package.',
+        lastMessageAt: now.subtract(const Duration(hours: 7)),
+        unreadCount: 0,
+        assignedTo: 'u_sales_1',
+        intent: BuyingIntent.high,
+        stage: InboxLeadStage.qualified,
+        isCommentThread: true,
+      ),
+    ];
+  }
+
+  List<UnifiedMessage> _seedMessages(List<Conversation> conversations) {
+    final now = DateTime.now();
+    return conversations
+        .map(
+          (c) => UnifiedMessage(
+            id: 'msg_seed_${c.id}',
+            conversationId: c.id,
+            channel: c.channel,
+            externalMessageId: 'ext_seed_${c.id}',
+            externalUserId: c.externalUserId,
+            senderName: c.customerName,
+            senderHandle: c.customerHandle,
+            text: c.lastMessagePreview,
+            createdAt: c.lastMessageAt.subtract(const Duration(minutes: 2)),
+            rawPayload: {'channel': c.channel.name, 'demo': true},
+          ),
+        )
+        .followedBy([
+          UnifiedMessage(
+            id: 'msg_seed_outgoing_1',
+            conversationId: 'conv_wa_1',
+            channel: ChannelType.whatsapp,
+            externalMessageId: 'ext_out_wa_1',
+            externalUserId: 'leadflow_agent',
+            senderName: 'LeadFlow Agent',
+            text: 'Sure, please share monthly bill and location for accurate quote.',
+            createdAt: now.subtract(const Duration(minutes: 3)),
+            direction: 'outgoing',
+            status: 'sent',
+            rawPayload: const {'demo': true},
+          ),
+        ])
+        .toList();
+  }
+}
