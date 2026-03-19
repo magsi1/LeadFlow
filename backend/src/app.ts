@@ -30,11 +30,11 @@ export function buildApp() {
   });
 
   app.get('/api/health', (_req, res) => {
-    res.status(200).json({ status: 'ok', service: 'LeadFlow API' });
+    res.status(200).json({ status: 'ok' });
   });
 
   app.get('/', (_req, res) => {
-    res.status(200).send('LeadFlow API is running');
+    res.status(200).send('LeadFlow API is running 🚀');
   });
 
   app.use('/analytics', analyticsRouter);

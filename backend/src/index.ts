@@ -10,7 +10,15 @@ if (!process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_ACCESS_TOKEN)
 }
 console.log('WhatsApp Auto Reply Ready ✅');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
 
 const bootstrap = async (): Promise<void> => {
   const [{ buildApp }, { env }, { logger }, { runSupabaseStartupDiagnostics, testSupabaseConnection }] =
@@ -25,6 +33,7 @@ const bootstrap = async (): Promise<void> => {
 
   const startServer = (port: number | string, retryCount = 0): void => {
     const server = app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
       logger.info('LeadFlow webhook backend started', {
         port,
         api_base_url: env.apiBaseUrl,
