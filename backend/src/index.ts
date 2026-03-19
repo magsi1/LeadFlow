@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import cors from 'cors';
 dotenv.config();
 
 console.log('ENV CHECK:', {
@@ -30,6 +31,7 @@ const bootstrap = async (): Promise<void> => {
     ]);
 
   const app = buildApp();
+  app.use(cors());
 
   const startServer = (port: number | string, retryCount = 0): void => {
     const server = app.listen(port, () => {

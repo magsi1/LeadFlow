@@ -1,4 +1,5 @@
 import express, { type Request } from 'express';
+import cors from 'cors';
 
 import { analyticsRouter } from './routes/analytics.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -22,6 +23,14 @@ export function buildApp() {
         req.rawBody = Buffer.from(buf);
       },
       limit: '1mb',
+    }),
+  );
+
+  app.use(
+    cors({
+      origin: '*',
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     }),
   );
 
