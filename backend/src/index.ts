@@ -49,7 +49,11 @@ const bootstrap = async (): Promise<void> => {
         api_base_url: env.apiBaseUrl,
       });
       void (async () => {
-        await testSupabaseConnection();
+        try {
+          await testSupabaseConnection();
+        } catch (err) {
+          console.error("Startup check failed but continuing...");
+        }
       })();
     });
 

@@ -1,33 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'app.dart';
-import 'core/config/app_config.dart';
+import 'screens/leads_screen.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runApp(const LeadFlowApp());
+}
 
-  debugPrint('[CONFIG] URL: ${AppConfig.supabaseUrl}');
-  final keyPrefix = AppConfig.supabaseAnonKey.length > 20
-      ? AppConfig.supabaseAnonKey.substring(0, 20)
-      : AppConfig.supabaseAnonKey;
-  debugPrint('[CONFIG] KEY: $keyPrefix...');
+class LeadFlowApp extends StatelessWidget {
+  const LeadFlowApp({super.key});
 
-  if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
-    debugPrint('[SUPABASE] Missing SUPABASE_URL or SUPABASE_ANON_KEY');
-  } else {
-    try {
-      await Supabase.initialize(
-        url: AppConfig.supabaseUrl,
-        anonKey: AppConfig.supabaseAnonKey,
-      );
-      debugPrint('[SUPABASE] Connection initialized successfully');
-      debugPrint('CURRENT USER: ${Supabase.instance.client.auth.currentUser}');
-      debugPrint('SESSION: ${Supabase.instance.client.auth.currentSession}');
-    } catch (e) {
-      debugPrint('[SUPABASE] Initialization error: $e');
-    }
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'LeadFlow',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        useMaterial3: true,
+      ),
+      home: const LeadsScreen(),
+    );
   }
-  runApp(const ProviderScope(child: LeadFlowApp()));
 }

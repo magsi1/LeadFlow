@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+
+import '../../../data/models/api_lead.dart';
+import '../../../data/services/leads_api_service.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -13,88 +12,136 @@ class LeadsScreen extends StatefulWidget {
 }
 
 class _LeadsScreenState extends State<LeadsScreen> {
-  final _supabase = Supabase.instance.client;
+  final _api = LeadsApiService();
   final _dateFormatter = DateFormat('dd MMM yyyy, hh:mm a');
+  static const List<String> _allowedStatuses = <String>[
+    'new',
+    'contacted',
+    'closed',
+  ];
 
-  List<Map<String, dynamic>> _leads = <Map<String, dynamic>>[];
-  bool _myLeadsOnly = false;
+  List<ApiLead> _leads = <ApiLead>[];
   bool _isLoading = true;
-  StreamSubscription<List<Map<String, dynamic>>>? _leadsSubscription;
+  String? _errorMessage;
+  final Map<String, bool> _statusUpdating = <String, bool>{};
 
   @override
   void initState() {
     super.initState();
     _fetchLeads();
-    _subscribeToLeads();
-  }
-
-  @override
-  void dispose() {
-    _leadsSubscription?.cancel();
-    super.dispose();
-  }
-
-  Future<List<Map<String, dynamic>>> fetchLeads() async {
-    var query = _supabase.from('leads').select();
-    if (_myLeadsOnly) {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId != null && userId.isNotEmpty) {
-        query = query.eq('assigned_to', userId);
-      }
-    }
-    final response = await query.order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(response);
   }
 
   Future<void> _fetchLeads() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      final data = await fetchLeads();
+      final data = await _api.fetchLeads();
       if (!mounted) return;
       setState(() {
         _leads = data;
+        _isLoading = false;
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load leads: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to load leads: $error';
+      });
     }
   }
 
-  void _subscribeToLeads() {
-    _leadsSubscription?.cancel();
-    _leadsSubscription = _supabase
-        .from('leads')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .listen(
-      (data) {
-        if (!mounted) return;
-        List<Map<String, dynamic>> filtered = List<Map<String, dynamic>>.from(data);
-        if (_myLeadsOnly) {
-          final userId = _supabase.auth.currentUser?.id;
-          if (userId != null && userId.isNotEmpty) {
-            filtered = filtered.where((lead) => (lead['assigned_to'] ?? '').toString() == userId).toList();
-          }
-        }
-        setState(() {
-          _leads = filtered;
-          _isLoading = false;
-        });
-      },
-      onError: (Object error) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Realtime update error: $error')),
+  Future<void> _showCreateLeadDialog() async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    String selectedStatus = 'new';
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add Lead'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(labelText: 'Phone'),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedStatus,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: _allowedStatuses
+                        .map(
+                          (status) => DropdownMenuItem<String>(
+                            value: status,
+                            child: Text(status.toUpperCase()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        selectedStatus = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
+
+    final name = nameController.text.trim();
+    final phone = phoneController.text.trim();
+    nameController.dispose();
+    phoneController.dispose();
+
+    if (created != true) return;
+    if (name.isEmpty || phone.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name and phone are required')),
+      );
+      return;
+    }
+
+    try {
+      await _api.addLead(name: name, phone: phone, status: selectedStatus);
+      await _fetchLeads();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lead added')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add lead: $error')),
+      );
+    }
   }
 
   Color _statusColor(String status) {
@@ -110,118 +157,47 @@ class _LeadsScreenState extends State<LeadsScreen> {
     }
   }
 
-  Color _scoreColor(String category) {
-    switch (category.toUpperCase()) {
-      case 'HOT':
-        return Colors.green;
-      case 'WARM':
-        return Colors.orange;
-      case 'COLD':
-        return Colors.red;
-      default:
-        return Colors.blueGrey;
-    }
+  String _formatCreatedAt(DateTime? createdAt) {
+    if (createdAt == null) return '-';
+    return _dateFormatter.format(createdAt.toLocal());
   }
 
-  Future<void> _showStatusDialog(Map<String, dynamic> lead) async {
-    final selectedStatus = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Update status'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('new'),
-            child: const Text('New'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('contacted'),
-            child: const Text('Contacted'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('closed'),
-            child: const Text('Closed'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _updateLeadStatus(ApiLead lead, String status) async {
+    if (status == lead.status) return;
 
-    if (selectedStatus == null) return;
+    setState(() {
+      _statusUpdating[lead.id] = true;
+      _leads = _leads
+          .map((item) => item.id == lead.id ? item.copyWith(status: status) : item)
+          .toList();
+    });
 
     try {
-      await _supabase.from('leads').update({'status': selectedStatus}).eq('id', lead['id']);
-      await _fetchLeads();
+      final updated = await _api.updateLeadStatus(id: lead.id, status: status);
+      if (!mounted) return;
+      setState(() {
+        _leads = _leads
+            .map((item) => item.id == lead.id ? updated : item)
+            .toList();
+      });
     } catch (error) {
       if (!mounted) return;
+      setState(() {
+        _leads = _leads
+            .map(
+              (item) => item.id == lead.id ? item.copyWith(status: lead.status) : item,
+            )
+            .toList();
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Status update failed: $error')),
       );
-    }
-  }
-
-  Future<void> _showAssignDialog(Map<String, dynamic> lead) async {
-    final controller = TextEditingController(text: (lead['assigned_to'] ?? '').toString());
-    final assignedTo = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Assign Lead'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Agent user id',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
-    if (assignedTo == null || assignedTo.isEmpty) return;
-    try {
-      await _supabase.from('leads').update({'assigned_to': assignedTo}).eq('id', lead['id']);
-      await _fetchLeads();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Assign failed: $error')),
-      );
-    }
-  }
-
-  Future<void> _openWhatsApp(String rawPhone) async {
-    final phone = rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone number is not valid')),
-      );
-      return;
-    }
-
-    final uri = Uri.parse('https://wa.me/$phone');
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open WhatsApp')),
-      );
-    }
-  }
-
-  String _formatCreatedAt(dynamic createdAt) {
-    if (createdAt == null) return '-';
-    try {
-      final date = DateTime.tryParse(createdAt.toString());
-      if (date == null) return createdAt.toString();
-      return _dateFormatter.format(date.toLocal());
-    } catch (_) {
-      return createdAt.toString();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _statusUpdating.remove(lead.id);
+        });
+      }
     }
   }
 
@@ -229,27 +205,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CRM Leads Dashboard'),
+        title: const Text('LeadFlow Leads'),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: FilterChip(
-              selected: _myLeadsOnly,
-              onSelected: (selected) {
-                setState(() {
-                  _myLeadsOnly = selected;
-                });
-                _fetchLeads();
-                _subscribeToLeads();
-              },
-              label: const Text('My Leads'),
-            ),
+          IconButton(
+            onPressed: _isLoading ? null : _fetchLeads,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _leads.isEmpty
+          : _errorMessage != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : _leads.isEmpty
               ? const Center(child: Text('No leads yet'))
               : RefreshIndicator(
                   onRefresh: _fetchLeads,
@@ -258,127 +234,114 @@ class _LeadsScreenState extends State<LeadsScreen> {
                     itemCount: _leads.length,
                     itemBuilder: (context, index) {
                       final lead = _leads[index];
-                      final name = (lead['name'] ?? 'Unknown').toString();
-                      final phone = (lead['phone'] ?? '').toString();
-                      final message = (lead['message'] ?? '').toString();
-                      final status = (lead['status'] ?? 'new').toString();
-                      final score = (lead['score'] as num?)?.toInt() ?? 0;
-                      final scoreCategory = (lead['score_category'] ?? 'COLD').toString();
-                      final assignedTo = (lead['assigned_to'] ?? '').toString();
-                      final dealValue = (lead['deal_value'] as num?)?.toDouble() ?? 0;
-                      final dealStatus = (lead['deal_status'] ?? 'open').toString();
-                      final createdAt = _formatCreatedAt(lead['created_at']);
+                      final createdAt = _formatCreatedAt(lead.createdAt);
+                      final isUpdating = _statusUpdating[lead.id] == true;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => _showStatusDialog(lead),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 16,
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      lead.name.isEmpty ? 'Unknown' : lead.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _statusColor(
+                                        lead.status,
+                                      ).withValues(alpha: 0.14),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      lead.status.toUpperCase(),
+                                      style: TextStyle(
+                                        color: _statusColor(lead.status),
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Phone: ${lead.phone.isEmpty ? '-' : lead.phone}',
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Status: ',
+                                    style: TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue:
+                                          _allowedStatuses.contains(lead.status)
+                                          ? lead.status
+                                          : 'new',
+                                      items: _allowedStatuses
+                                          .map(
+                                            (status) => DropdownMenuItem<String>(
+                                              value: status,
+                                              child: Text(status.toUpperCase()),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: isUpdating
+                                          ? null
+                                          : (value) {
+                                              if (value == null) return;
+                                              _updateLeadStatus(lead, value);
+                                            },
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 10,
                                         ),
                                       ),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: _statusColor(status).withValues(alpha: 0.14),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        status.toUpperCase(),
-                                        style: TextStyle(
-                                          color: _statusColor(status),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Created: $createdAt',
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  fontSize: 12,
                                 ),
-                                const SizedBox(height: 10),
-                                Text('Phone: ${phone.isEmpty ? '-' : phone}'),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: _scoreColor(scoreCategory).withValues(alpha: 0.14),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        '$scoreCategory ($score)',
-                                        style: TextStyle(
-                                          color: _scoreColor(scoreCategory),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Assigned: ${assignedTo.isEmpty ? 'Unassigned' : assignedTo}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => _showAssignDialog(lead),
-                                      child: const Text('Assign'),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Deal: ${dealStatus.toUpperCase()}  |  Value: ${dealValue.toStringAsFixed(2)}',
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Message: ${message.isEmpty ? '-' : message}',
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Created: $createdAt',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Open WhatsApp',
-                                      onPressed: phone.isEmpty ? null : () => _openWhatsApp(phone),
-                                      icon: const Icon(Icons.open_in_new),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       );
                     },
                   ),
                 ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showCreateLeadDialog,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Lead'),
+      ),
     );
   }
 }
