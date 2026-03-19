@@ -21,7 +21,7 @@ process.on('uncaughtException', (error) => {
 });
 
 const bootstrap = async (): Promise<void> => {
-  const [{ buildApp }, { env }, { logger }, { runSupabaseStartupDiagnostics, testSupabaseConnection }] =
+  const [{ buildApp }, { env }, { logger }, { testSupabaseConnection }] =
     await Promise.all([
       import('./app.js'),
       import('./lib/env.js'),
@@ -39,7 +39,6 @@ const bootstrap = async (): Promise<void> => {
         api_base_url: env.apiBaseUrl,
       });
       void (async () => {
-        await runSupabaseStartupDiagnostics();
         await testSupabaseConnection();
       })();
     });
