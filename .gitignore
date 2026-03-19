@@ -22,7 +22,5 @@ build/
 
 # Secrets / artifacts
 .env
-backend/.env
 node_modules
 dist
-*.log
