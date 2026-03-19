@@ -29,6 +29,14 @@ export function buildApp() {
     res.status(200).json({ ok: true });
   });
 
+  app.get('/api/health', (_req, res) => {
+    res.status(200).json({ status: 'ok', service: 'LeadFlow API' });
+  });
+
+  app.get('/', (_req, res) => {
+    res.status(200).send('LeadFlow API is running');
+  });
+
   app.use('/analytics', analyticsRouter);
   app.use('/webhooks', webhooksRouter);
   app.use('/webhook', webhooksRouter);
