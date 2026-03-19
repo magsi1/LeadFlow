@@ -1,144 +1,148 @@
-import { Router } from 'express'
+import { Router, type Response } from 'express'
+import { randomUUID } from 'node:crypto'
 
 import { supabase } from '../lib/supabaseAdmin.js'
 
 export const leadsRouter = Router()
 
-function normalizeLeadStatus(statusRaw: string): string {
-  const status = statusRaw.trim().toLowerCase()
-  if (status === 'new') return 'new'
-  if (status === 'contacted') return 'contacted'
-  if (status === 'interested') return 'qualified'
-  if (status === 'followup' || status === 'follow_up' || status === 'follow-up') return 'proposal_sent'
-  if (status === 'won' || status === 'closed_won') return 'won'
-  if (status === 'lost' || status === 'closed_lost') return 'lost'
-  if (status === 'closed') return 'won'
-  return status
+const LEAD_STATUSES = ['new', 'contacted', 'closed'] as const
+type LeadStatus = (typeof LEAD_STATUSES)[number]
+
+function isLeadStatus(value: string): value is LeadStatus {
+  return (LEAD_STATUSES as readonly string[]).includes(value)
+}
+
+function cleanString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function parsePositiveInt(value: unknown, fallback: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+function sendError(res: Response, status: number, error: string): void {
+  console.log('[leads-api:error]', { status, error })
+  res.status(status).json({ ok: false, error })
+}
+
+function sendSuccess(res: Response, status: number, data: unknown): void {
+  res.status(status).json({ ok: true, data })
+}
+
+function validateNamePhoneStatus(name: string, phone: string, status: string | undefined): string | null {
+  if (name.length === 0) return 'name_required'
+  if (phone.length === 0) return 'phone_required'
+  if (status != null && !isLeadStatus(status)) return 'invalid_status'
+  return null
 }
 
 leadsRouter.get('/', async (req, res) => {
-  const workspaceId =
-    req.header('x-workspace-id')?.trim() ??
-    (req.query.workspaceId as string | undefined)?.trim()
-  const assignedTo = (req.query.assigned_to as string | undefined)?.trim()
-  const myLeads = (req.query.my_leads as string | undefined)?.trim().toLowerCase() === 'true'
-  const requesterProfileId = req.header('x-profile-id')?.trim()
+  const status = cleanString(req.query.status).toLowerCase()
+  const search = cleanString(req.query.search)
+  const page = parsePositiveInt(req.query.page, 1)
+  const limit = Math.min(parsePositiveInt(req.query.limit, 10), 100)
+  const from = (page - 1) * limit
+  const to = from + limit - 1
 
   let query = supabase
     .from('leads')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(200)
+    .range(from, to)
 
-  if (workspaceId != null && workspaceId.trim().length > 0) {
-    query = query.eq('workspace_id', workspaceId)
+  if (status.length > 0) {
+    if (!isLeadStatus(status)) {
+      sendError(res, 400, 'invalid_status')
+      return
+    }
+    query = query.eq('status', status)
   }
-  if (assignedTo != null && assignedTo.length > 0) {
-    query = query.eq('assigned_to', assignedTo)
-  }
-  if (myLeads && requesterProfileId != null && requesterProfileId.length > 0) {
-    query = query.eq('assigned_to', requesterProfileId)
+
+  if (search.length > 0) {
+    const escapedSearch = search.replace(/,/g, ' ')
+    query = query.or(`name.ilike.%${escapedSearch}%,phone.ilike.%${escapedSearch}%`)
   }
 
   const { data, error } = await query
   if (error) {
-    res.status(500).json({ ok: false, error: `list_leads_failed:${error.message}` })
+    sendError(res, 500, `fetch_leads_failed:${error.message}`)
     return
   }
 
-  res.status(200).json({
-    ok: true,
-    leads: data ?? [],
-  })
+  sendSuccess(res, 200, data ?? [])
 })
 
-leadsRouter.patch('/:id/status', async (req, res) => {
-  const id = req.params.id?.trim()
-  const statusRaw = (req.body as { status?: string } | undefined)?.status
-  const status = statusRaw?.toString().trim()
+leadsRouter.post('/', async (req, res) => {
+  const body = (req.body as { name?: unknown; phone?: unknown; status?: unknown } | undefined) ?? {}
+  const name = cleanString(body.name)
+  const phone = cleanString(body.phone)
+  const rawStatus = cleanString(body.status).toLowerCase()
+  const status = rawStatus.length > 0 ? rawStatus : 'new'
 
-  if (id == null || id.length === 0) {
-    res.status(400).json({ ok: false, error: 'lead_id_required' })
+  const validationError = validateNamePhoneStatus(name, phone, status)
+  if (validationError != null) {
+    sendError(res, 400, validationError)
     return
   }
 
-  if (status == null || status.length === 0) {
-    res.status(400).json({ ok: false, error: 'status_required' })
-    return
+  const payload = {
+    id: randomUUID(),
+    name,
+    phone,
+    status,
+    created_at: new Date().toISOString(),
   }
 
-  const normalizedStatus = normalizeLeadStatus(status)
-
-  const { data, error } = await supabase
-    .from('leads')
-    .update({ status: normalizedStatus })
-    .eq('id', id)
-    .select('*')
-    .single()
-
+  const { data, error } = await supabase.from('leads').insert([payload]).select('*').single()
   if (error) {
-    res.status(500).json({ ok: false, error: `update_lead_status_failed:${error.message}` })
+    sendError(res, 500, `create_lead_failed:${error.message}`)
     return
   }
 
-  res.status(200).json({
-    ok: true,
-    lead: data,
-  })
+  sendSuccess(res, 201, data)
 })
 
-leadsRouter.patch('/:id/assign', async (req, res) => {
-  const id = req.params.id?.trim()
-  const assignedTo = (req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assigned_to ??
-    (req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assignedTo
-
-  if (id == null || id.length === 0) {
-    res.status(400).json({ ok: false, error: 'lead_id_required' })
-    return
-  }
-  if (assignedTo == null || assignedTo.trim().length === 0) {
-    res.status(400).json({ ok: false, error: 'assigned_to_required' })
+leadsRouter.put('/:id', async (req, res) => {
+  const id = cleanString(req.params.id)
+  if (id.length === 0) {
+    sendError(res, 400, 'lead_id_required')
     return
   }
 
-  const { data, error } = await supabase
-    .from('leads')
-    .update({ assigned_to: assignedTo.trim() })
-    .eq('id', id)
-    .select('*')
-    .single()
-
-  if (error) {
-    res.status(500).json({ ok: false, error: `assign_lead_failed:${error.message}` })
-    return
-  }
-
-  res.status(200).json({
-    ok: true,
-    lead: data,
-  })
-})
-
-leadsRouter.patch('/:id/deal', async (req, res) => {
-  const id = req.params.id?.trim()
-  const body = (req.body as { deal_value?: number; dealValue?: number; deal_status?: string; dealStatus?: string } | undefined) ?? {}
-  const dealValueRaw = body.deal_value ?? body.dealValue
-  const dealStatusRaw = body.deal_status ?? body.dealStatus
-
-  if (id == null || id.length === 0) {
-    res.status(400).json({ ok: false, error: 'lead_id_required' })
-    return
-  }
-
+  const body = (req.body as { name?: unknown; phone?: unknown; status?: unknown } | undefined) ?? {}
   const patch: Record<string, unknown> = {}
-  if (dealValueRaw != null) {
-    patch.deal_value = Number(dealValueRaw) || 0
+
+  if (body.name !== undefined) {
+    const name = cleanString(body.name)
+    if (name.length === 0) {
+      sendError(res, 400, 'name_required')
+      return
+    }
+    patch.name = name
   }
-  if (dealStatusRaw != null && dealStatusRaw.trim().length > 0) {
-    patch.deal_status = dealStatusRaw.trim().toLowerCase()
+
+  if (body.phone !== undefined) {
+    const phone = cleanString(body.phone)
+    if (phone.length === 0) {
+      sendError(res, 400, 'phone_required')
+      return
+    }
+    patch.phone = phone
   }
+
+  if (body.status !== undefined) {
+    const status = cleanString(body.status).toLowerCase()
+    if (!isLeadStatus(status)) {
+      sendError(res, 400, 'invalid_status')
+      return
+    }
+    patch.status = status
+  }
+
   if (Object.keys(patch).length === 0) {
-    res.status(400).json({ ok: false, error: 'deal_patch_required' })
+    sendError(res, 400, 'update_payload_required')
     return
   }
 
@@ -150,12 +154,176 @@ leadsRouter.patch('/:id/deal', async (req, res) => {
     .single()
 
   if (error) {
-    res.status(500).json({ ok: false, error: `update_lead_deal_failed:${error.message}` })
+    sendError(res, 500, `update_lead_failed:${error.message}`)
     return
   }
 
-  res.status(200).json({
-    ok: true,
-    lead: data,
-  })
+  sendSuccess(res, 200, data)
+})
+
+leadsRouter.delete('/:id', async (req, res) => {
+  const id = cleanString(req.params.id)
+  if (id.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('leads')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single()
+
+  if (error) {
+    sendError(res, 500, `delete_lead_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 200, { deleted: true, id: data?.id ?? id })
+})
+
+leadsRouter.post('/:id/notes', async (req, res) => {
+  const leadId = cleanString(req.params.id)
+  const note = cleanString((req.body as { note?: unknown } | undefined)?.note)
+
+  if (leadId.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+  if (note.length === 0) {
+    sendError(res, 400, 'note_required')
+    return
+  }
+
+  const payload = {
+    id: randomUUID(),
+    lead_id: leadId,
+    note,
+    created_at: new Date().toISOString(),
+  }
+
+  const { data, error } = await supabase.from('lead_notes').insert([payload]).select('*').single()
+  if (error) {
+    sendError(res, 500, `create_note_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 201, data)
+})
+
+leadsRouter.get('/:id/notes', async (req, res) => {
+  const leadId = cleanString(req.params.id)
+  if (leadId.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('lead_notes')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    sendError(res, 500, `fetch_notes_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 200, data ?? [])
+})
+
+// Compatibility routes used by existing clients.
+leadsRouter.patch('/:id/status', async (req, res) => {
+  const id = cleanString(req.params.id)
+  const status = cleanString((req.body as { status?: string } | undefined)?.status).toLowerCase()
+
+  if (id.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+  if (!isLeadStatus(status)) {
+    sendError(res, 400, 'invalid_status')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('leads')
+    .update({ status })
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) {
+    sendError(res, 500, `update_lead_status_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 200, data)
+})
+
+leadsRouter.patch('/:id/assign', async (req, res) => {
+  const id = cleanString(req.params.id)
+  const assignedTo =
+    cleanString((req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assigned_to) ||
+    cleanString((req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assignedTo)
+
+  if (id.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+  if (assignedTo.length === 0) {
+    sendError(res, 400, 'assigned_to_required')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('leads')
+    .update({ assigned_to: assignedTo })
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) {
+    sendError(res, 500, `assign_lead_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 200, data)
+})
+
+leadsRouter.patch('/:id/deal', async (req, res) => {
+  const id = cleanString(req.params.id)
+  const body =
+    (req.body as { deal_value?: number; dealValue?: number; deal_status?: string; dealStatus?: string } | undefined) ??
+    {}
+  const dealValueRaw = body.deal_value ?? body.dealValue
+  const dealStatusRaw = cleanString(body.deal_status ?? body.dealStatus).toLowerCase()
+
+  if (id.length === 0) {
+    sendError(res, 400, 'lead_id_required')
+    return
+  }
+
+  const patch: Record<string, unknown> = {}
+  if (dealValueRaw != null) patch.deal_value = Number(dealValueRaw) || 0
+  if (dealStatusRaw.length > 0) patch.deal_status = dealStatusRaw
+  if (Object.keys(patch).length === 0) {
+    sendError(res, 400, 'deal_patch_required')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('leads')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) {
+    sendError(res, 500, `update_lead_deal_failed:${error.message}`)
+    return
+  }
+
+  sendSuccess(res, 200, data)
 })
