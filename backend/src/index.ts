@@ -34,9 +34,11 @@ const bootstrap = async (): Promise<void> => {
   const app = buildApp();
   app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
   }));
+  app.options('*', cors());
   app.use(express.json());
 
   const startServer = (port: number | string, retryCount = 0): void => {
