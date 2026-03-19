@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import express from 'express';
 import cors from 'cors';
 dotenv.config();
 
@@ -31,7 +32,12 @@ const bootstrap = async (): Promise<void> => {
     ]);
 
   const app = buildApp();
-  app.use(cors());
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+  app.use(express.json());
 
   const startServer = (port: number | string, retryCount = 0): void => {
     const server = app.listen(port, () => {
