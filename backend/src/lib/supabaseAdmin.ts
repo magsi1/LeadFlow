@@ -74,7 +74,7 @@ export const runSupabaseStartupDiagnostics = async () => {
 
 export const testSupabaseConnection = async () => {
   try {
-    const { data, error } = await supabase.from('leads').select('*').limit(1)
+    const { data, error } = await supabase.from('leads').select('id').limit(1)
 
     if (error) {
       console.error("❌ Supabase error:", error.message)
