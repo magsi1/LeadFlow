@@ -232,6 +232,11 @@ Tables covered:
 2. Open SQL editor and run:
    - `20260316_0001_crm_schema.sql`
    - `20260316_0002_rls_policies.sql`
+   - `20260317_0004_webhook_ingestion_extensions.sql`
+   - `20260317_0005_outbound_message_lifecycle.sql`
+   - `20260317_0006_workspace_team_foundation.sql`
+   - `20260317_0007_workspace_rls_hardening.sql`
+   - `20260317_0008_analytics_views.sql`
 3. (Optional) Run `20260316_0003_seed_demo_data.sql` after replacing demo UUIDs with real auth user IDs.
 4. Set runtime defines:
    - `LEADFLOW_DEMO_MODE=false`
@@ -249,6 +254,36 @@ Tables covered:
   - Login/signup routes are enforced by router guard.
 - **Fallback safety**:
   - If Supabase mode is requested but keys are missing, repositories safely fall back to mock implementations.
+
+## Workspace + Role Model
+
+LeadFlow now supports workspace-scoped team foundations:
+- `workspaces`
+- `workspace_members`
+- `workspace_invitations`
+- `assignment_rules`
+
+Roles:
+- `owner`: full workspace control
+- `admin`: team + integrations + rules management
+- `manager`: team operations and assignment visibility
+- `sales`: assigned operational work
+
+Permissions in app:
+- Team tab is visible to owner/admin/manager.
+- Integrations screen is owner/admin-only.
+- Sales visibility is restricted to assigned records (plus optional unassigned pool via assignment rule config flag `sales_can_view_unassigned`).
+
+Workspace behavior:
+- Active workspace is auto-selected on login.
+- If a user has multiple workspaces, selection is available in Settings.
+- Selection is persisted locally for next app launch.
+
+Migration assumptions/backfill (workspace upgrade):
+- Existing single-workspace records are backfilled into the earliest/default workspace.
+- `workspace_members` are backfilled from existing profiles with active status.
+- First available owner/admin member is promoted to workspace owner when needed.
+- Existing tables are migrated additively (non-destructive) to preserve running MVP data.
 
 ## Supabase Realtime Behavior
 
@@ -268,6 +303,76 @@ Realtime sync behavior:
 Demo mode behavior:
 - Realtime watchers use local/mock streams or no-op fallback.
 - App remains fully usable without Supabase configuration.
+
+## Assignment Rules (Foundation)
+
+Rule types available in schema/service foundation:
+- `round_robin`
+- `least_busy`
+- `manual_default`
+- `channel_based`
+- `city_based`
+
+Backend ingestion applies active assignment rules when new inbound conversations are created.
+Auto-assignment writes activity records (`auto_assignment_applied`) and updates conversation/lead assignee fields.
+
+Notes:
+- Invitation persistence is implemented; email delivery is intentionally left for next phase.
+- RLS is now workspace-scoped and role-aware, with comments in migration for future hardening.
+
+## Analytics & KPI Reporting
+
+LeadFlow now includes a repository-driven analytics layer for Dashboard and Reports.
+
+Metric definitions:
+- `conversion rate` = won leads / total leads in selected filter scope.
+- `contacted leads` = leads that progressed beyond `new`.
+- `qualified leads` = `interested` + `negotiation`.
+- `follow-up discipline`:
+  - due today: pending follow-ups due on current date
+  - overdue: pending follow-ups with due date in the past
+  - completed on-time/late: completed follow-ups split by due timing
+- `avg first response` = first outbound minus first inbound per conversation (when data exists).
+- `avg time to conversion` = won lead updated_at minus created_at (when data exists).
+
+Role visibility:
+- owner/admin: workspace-wide analytics.
+- manager: team/workspace operational analytics.
+- sales: self-scoped analytics (assigned workload and own performance).
+
+Live vs demo behavior:
+- Live mode: analytics repository loads workspace-scoped data from Supabase tables.
+- Demo mode: analytics repository computes believable metrics from seeded mock leads/follow-ups/conversation/message samples.
+- If live analytics is unavailable, app remains stable and demo-safe.
+
+## Webhook Ingestion Backend (Meta + WhatsApp)
+
+A production-oriented webhook backend is included under `backend/`:
+- `GET /webhooks/meta` for Meta verification challenge
+- `POST /webhooks/meta` for WhatsApp, Instagram, and Facebook inbound events
+
+Core ingestion flow:
+- Validate verify token and optional signature (`x-hub-signature-256`)
+- Normalize payloads by channel adapters
+- Resolve `integration_accounts` mapping
+- Upsert conversation context and insert inbound message
+- Update conversation preview/time/unread
+- Insert activity timeline event
+- Remain retry-safe with `messages.external_message_id` idempotency
+
+Setup:
+1. Configure backend env in `backend/.env` using `backend/.env.example`.
+2. Start backend locally (`npm install`, `npm run dev` in `backend/`).
+3. Expose it with ngrok (`ngrok http 8080`).
+4. Configure Meta webhook callback to `https://<ngrok-id>.ngrok.io/webhooks/meta`.
+5. Subscribe WhatsApp/Instagram/Facebook messaging fields in Meta dashboard.
+
+See full backend runbook and sample payloads in `backend/README.md`.
+
+Outbound behavior:
+- Flutter composer can call backend `POST /api/messages/send` (when backend URL is configured).
+- Backend sends to channel APIs, persists `pending/sent/failed` states, then reconciles delivered/read via webhook status callbacks.
+- Supabase realtime streams these message status updates back to Inbox automatically.
 
 ## Extension Points for Next Phase
 

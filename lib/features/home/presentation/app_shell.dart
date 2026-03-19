@@ -12,28 +12,30 @@ class AppShell extends ConsumerWidget {
 
   int _indexFromLocation(String location, bool isAdmin) {
     if (location.startsWith(RoutePaths.dashboard)) return 0;
-    if (location.startsWith(RoutePaths.inbox)) return 1;
-    if (location.startsWith(RoutePaths.leads)) return 2;
-    if (location.startsWith(RoutePaths.followUps)) return 3;
-    if (location.startsWith(RoutePaths.reports)) return 4;
-    if (isAdmin && location.startsWith(RoutePaths.team)) return 5;
-    return isAdmin ? 6 : 5;
+    if (location.startsWith(RoutePaths.analytics)) return 1;
+    if (location.startsWith(RoutePaths.inbox)) return 2;
+    if (location.startsWith(RoutePaths.leads)) return 3;
+    if (location.startsWith(RoutePaths.followUps)) return 4;
+    if (location.startsWith(RoutePaths.reports)) return 5;
+    if (isAdmin && location.startsWith(RoutePaths.team)) return 6;
+    return isAdmin ? 7 : 6;
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(appStateProvider).isAdmin;
+    final canManageTeam = ref.watch(appStateProvider).canManageTeam;
     final location = GoRouterState.of(context).matchedLocation;
-    final index = _indexFromLocation(location, isAdmin);
+    final index = _indexFromLocation(location, canManageTeam);
     final isWide = MediaQuery.sizeOf(context).width >= 1100;
 
     final routes = <String>[
       RoutePaths.dashboard,
+      RoutePaths.analytics,
       RoutePaths.inbox,
       RoutePaths.leads,
       RoutePaths.followUps,
       RoutePaths.reports,
-      if (isAdmin) RoutePaths.team,
+      if (canManageTeam) RoutePaths.team,
       RoutePaths.settings,
     ];
 
@@ -63,6 +65,11 @@ class AppShell extends ConsumerWidget {
                     label: Text('Dashboard'),
                   ),
                   const NavigationRailDestination(
+                    icon: Icon(Icons.analytics_outlined),
+                    selectedIcon: Icon(Icons.analytics_rounded),
+                    label: Text('Analytics'),
+                  ),
+                  const NavigationRailDestination(
                     icon: Icon(Icons.inbox_outlined),
                     selectedIcon: Icon(Icons.inbox_rounded),
                     label: Text('Inbox'),
@@ -82,7 +89,7 @@ class AppShell extends ConsumerWidget {
                     selectedIcon: Icon(Icons.bar_chart_rounded),
                     label: Text('Reports'),
                   ),
-                  if (isAdmin)
+                  if (canManageTeam)
                     const NavigationRailDestination(
                       icon: Icon(Icons.groups_outlined),
                       selectedIcon: Icon(Icons.groups_rounded),
@@ -110,11 +117,12 @@ class AppShell extends ConsumerWidget {
         onDestinationSelected: (i) => context.go(routes[i]),
         destinations: [
           const NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
+          const NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'Analytics'),
           const NavigationDestination(icon: Icon(Icons.inbox_outlined), label: 'Inbox'),
           const NavigationDestination(icon: Icon(Icons.people_alt_outlined), label: 'Leads'),
           const NavigationDestination(icon: Icon(Icons.alarm_on_outlined), label: 'Follow-ups'),
           const NavigationDestination(icon: Icon(Icons.bar_chart_outlined), label: 'Reports'),
-          if (isAdmin) const NavigationDestination(icon: Icon(Icons.groups_outlined), label: 'Team'),
+          if (canManageTeam) const NavigationDestination(icon: Icon(Icons.groups_outlined), label: 'Team'),
           const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
         ],
       ),

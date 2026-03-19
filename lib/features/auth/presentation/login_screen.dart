@@ -15,7 +15,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController(text: 'admin@leadflow.com');
+  final _email = TextEditingController();
   final _password = TextEditingController(text: '123456');
 
   @override
@@ -33,15 +33,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             password: _password.text.trim(),
           );
       if (mounted) context.go(RoutePaths.dashboard);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      final message = ref.read(appStateProvider).error ?? 'Unable to sign in.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final loading = ref.watch(appStateProvider).loading;
+    final appState = ref.watch(appStateProvider);
+    final loading = appState.loading;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -85,9 +87,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onPressed: () => context.push(RoutePaths.signup),
                     child: const Text('Create account'),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Demo: admin@leadflow.com / 123456'),
-                  const Text('Demo: sales@leadflow.com / 123456'),
+                  if ((appState.error ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      appState.error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

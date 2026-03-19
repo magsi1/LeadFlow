@@ -103,6 +103,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
         itemBuilder: (_, i) {
           final c = conversations[i];
           final isSelected = c.id == selected?.id;
+          final leadStatus = _cardLeadStatus(c);
+          final leadStatusColor = _leadStatusColor(leadStatus);
           return Card(
             color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08) : null,
             child: ListTile(
@@ -129,7 +131,55 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 4),
-                  channelBadge(c.channel),
+                  Row(
+                    children: [
+                      channelBadge(c.channel),
+                      const SizedBox(width: 8),
+                      if (c.leadId != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: leadStatusColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: leadStatusColor.withValues(alpha: 0.35)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: leadStatus,
+                              isDense: true,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: leadStatusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                              dropdownColor: Theme.of(context).colorScheme.surface,
+                              items: const [
+                                DropdownMenuItem(value: 'NEW', child: Text('NEW')),
+                                DropdownMenuItem(value: 'CONTACTED', child: Text('CONTACTED')),
+                                DropdownMenuItem(value: 'QUALIFIED', child: Text('QUALIFIED')),
+                                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+                              ],
+                              onChanged: inboxState.actionLoading || c.leadId == null
+                                  ? null
+                                  : (value) async {
+                                      if (value == null || c.leadId == null) return;
+                                      try {
+                                        await notifier.updateLeadCardStatus(
+                                          conversationId: c.id,
+                                          leadId: c.leadId!,
+                                          status: value,
+                                        );
+                                      } catch (_) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Failed to update lead status.')),
+                                        );
+                                      }
+                                    },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 6),
                   Text(c.lastMessagePreview, maxLines: 2, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 4),
@@ -156,6 +206,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
       final stageColor = _stageColor(selected.stage);
       final priorityLabel = _priorityLabel(selected.intent);
       final priorityColor = _priorityColor(selected.intent);
+      final leadStatus = _cardLeadStatus(selected);
+      final leadStatusColor = _leadStatusColor(leadStatus);
       final conversationActivities = appState.activities
           .where(
             (a) =>
@@ -251,6 +303,51 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                         icon: const Icon(Icons.schedule_rounded, size: 16),
                         label: const Text('Schedule Follow-up'),
                       ),
+                      if (selected.leadId != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: leadStatusColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: leadStatusColor.withValues(alpha: 0.35)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: leadStatus,
+                              isDense: true,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: leadStatusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                              dropdownColor: Theme.of(context).colorScheme.surface,
+                              items: const [
+                                DropdownMenuItem(value: 'NEW', child: Text('NEW')),
+                                DropdownMenuItem(value: 'CONTACTED', child: Text('CONTACTED')),
+                                DropdownMenuItem(value: 'QUALIFIED', child: Text('QUALIFIED')),
+                                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+                              ],
+                              onChanged: inboxState.actionLoading || selected.leadId == null
+                                  ? null
+                                  : (value) async {
+                                      if (value == null || selected.leadId == null) return;
+                                      try {
+                                        await notifier.updateLeadCardStatus(
+                                          conversationId: selected.id,
+                                          leadId: selected.leadId!,
+                                          status: value,
+                                        );
+                                      } catch (_) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Failed to update lead status.')),
+                                        );
+                                      }
+                                    },
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       PopupMenuButton<InboxLeadStage>(
                         enabled: !inboxState.actionLoading,
@@ -289,7 +386,46 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                               children: [
                                 Text(m.text),
                                 const SizedBox(height: 4),
-                                Text(Formatters.dateTime(m.createdAt), style: Theme.of(context).textTheme.bodySmall),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      Formatters.dateTime(m.createdAt),
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                    if (m.direction == 'outgoing') ...[
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        _messageStatusIcon(m.status),
+                                        size: 13,
+                                        color: _messageStatusColor(m.status),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _messageStatusLabel(m.status),
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: _messageStatusColor(m.status),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                      if (m.status == 'failed') ...[
+                                        const SizedBox(width: 8),
+                                        InkWell(
+                                          onTap: inboxState.actionLoading
+                                              ? null
+                                              : () => notifier.retryMessage(m.id),
+                                          child: Text(
+                                            'Retry',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ],
+                                ),
                               ],
                             ),
                           ),
@@ -795,6 +931,57 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
       InboxLeadStage.followUp => Colors.orange,
       InboxLeadStage.converted => Colors.teal,
       InboxLeadStage.closed => Colors.grey,
+    };
+  }
+
+  String _messageStatusLabel(String status) {
+    return switch (status) {
+      'pending' => 'Pending',
+      'sent' => 'Sent',
+      'delivered' => 'Delivered',
+      'read' => 'Read',
+      'failed' => 'Failed',
+      _ => 'Sent',
+    };
+  }
+
+  Color _messageStatusColor(String status) {
+    return switch (status) {
+      'failed' => Colors.redAccent,
+      'read' => Colors.green,
+      'delivered' => Colors.teal,
+      'pending' => Colors.orange,
+      _ => Colors.grey.shade700,
+    };
+  }
+
+  IconData _messageStatusIcon(String status) {
+    return switch (status) {
+      'failed' => Icons.error_outline,
+      'read' => Icons.done_all,
+      'delivered' => Icons.done_all_outlined,
+      'pending' => Icons.schedule,
+      _ => Icons.check,
+    };
+  }
+
+  String _cardLeadStatus(Conversation conversation) {
+    final fromMetadata = conversation.sourceMetadata['leadStatus']?.toString().trim().toUpperCase();
+    if (fromMetadata != null && fromMetadata.isNotEmpty) return fromMetadata;
+    return switch (conversation.stage) {
+      InboxLeadStage.contacted => 'CONTACTED',
+      InboxLeadStage.qualified || InboxLeadStage.followUp => 'QUALIFIED',
+      InboxLeadStage.converted || InboxLeadStage.closed => 'CLOSED',
+      _ => 'NEW',
+    };
+  }
+
+  Color _leadStatusColor(String status) {
+    return switch (status) {
+      'CONTACTED' => Colors.amber.shade700,
+      'QUALIFIED' => Colors.green,
+      'CLOSED' => Colors.redAccent,
+      _ => Colors.blue,
     };
   }
 }

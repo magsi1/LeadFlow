@@ -8,7 +8,7 @@ class FirebaseTeamRepository implements TeamRepository {
   final FirebaseFirestore _firestore;
 
   @override
-  Future<List<AppUser>> fetchTeam() async {
+  Future<List<AppUser>> fetchTeam({String? workspaceId}) async {
     final snap = await _firestore.collection('users').get();
     return snap.docs.map((d) => AppUser.fromMap(d.data())).toList();
   }

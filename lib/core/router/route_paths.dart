@@ -4,6 +4,7 @@ class RoutePaths {
   static const signup = '/signup';
   static const forgotPassword = '/forgot-password';
   static const dashboard = '/dashboard';
+  static const analytics = '/analytics';
   static const inbox = '/inbox';
   static const leads = '/leads';
   static const followUps = '/followups';

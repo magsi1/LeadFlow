@@ -88,7 +88,7 @@ class MockIntegrationRepository implements IntegrationRepository {
   }
 
   @override
-  Future<List<ChannelAccount>> fetchAccounts() async => _accounts;
+  Future<List<ChannelAccount>> fetchAccounts({String? workspaceId}) async => _accounts;
 
   @override
   Future<ChannelAccount> reconnect(String accountId) async {

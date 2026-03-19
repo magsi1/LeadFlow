@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/activity.dart';
 import '../../models/follow_up.dart';
 import '../../models/lead.dart';
-import '../../services/mock_seed_service.dart';
 import '../lead_repository.dart';
 
 class MockLeadRepository implements LeadRepository {
@@ -55,9 +54,9 @@ class MockLeadRepository implements LeadRepository {
   }
 
   Future<void> _seedAndPersist(SharedPreferences prefs) async {
-    _leads = MockSeedService.leads();
-    _activities = MockSeedService.activities(_leads);
-    _followUps = MockSeedService.followUps(_leads);
+    _leads = <Lead>[];
+    _activities = <Activity>[];
+    _followUps = <FollowUp>[];
     await _persist(prefs);
   }
 

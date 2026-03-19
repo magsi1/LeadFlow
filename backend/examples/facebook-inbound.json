@@ -1,0 +1,20 @@
+{
+  "object": "page",
+  "entry": [
+    {
+      "id": "987654321",
+      "time": 1710002000,
+      "messaging": [
+        {
+          "sender": { "id": "PSID_20001" },
+          "recipient": { "id": "987654321" },
+          "timestamp": 1710002000000,
+          "message": {
+            "mid": "m_facebook_2001",
+            "text": "I need a battery backup quote."
+          }
+        }
+      ]
+    }
+  ]
+}

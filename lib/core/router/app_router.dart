@@ -7,6 +7,7 @@ import '../../features/app_state/providers.dart';
 import '../../features/auth/presentation/forgot_password_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/signup_screen.dart';
+import '../../features/analytics/presentation/analytics_dashboard_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/followups/presentation/followup_screen.dart';
 import '../../features/home/presentation/app_shell.dart';
@@ -44,7 +45,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       if (authRequired && isAuth && (isAuthRoute || isSplash)) return RoutePaths.dashboard;
       if (!authRequired && isSplash) return RoutePaths.dashboard;
       if (!authRequired && isAuthRoute) return RoutePaths.dashboard;
-      if (!appState.isAdmin && state.matchedLocation == RoutePaths.team) return RoutePaths.dashboard;
+      if (!appState.canManageTeam && state.matchedLocation == RoutePaths.team) return RoutePaths.dashboard;
+      if (!appState.canManageIntegrations && state.matchedLocation == RoutePaths.integrations) {
+        return RoutePaths.dashboard;
+      }
       return null;
     },
     routes: [
@@ -56,6 +60,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __, child) => AppShell(child: child),
         routes: [
           GoRoute(path: RoutePaths.dashboard, builder: (_, __) => const DashboardScreen()),
+          GoRoute(path: RoutePaths.analytics, builder: (_, __) => const AnalyticsDashboardScreen()),
           GoRoute(path: RoutePaths.inbox, builder: (_, __) => const InboxScreen()),
           GoRoute(path: RoutePaths.leads, builder: (_, __) => const LeadsScreen()),
           GoRoute(path: RoutePaths.followUps, builder: (_, __) => const FollowUpScreen()),

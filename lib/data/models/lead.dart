@@ -9,6 +9,8 @@ enum LeadStatus {
 }
 
 enum LeadTemperature { hot, warm, cold }
+enum LeadScoreCategory { hot, warm, cold }
+enum DealStatus { open, won, lost }
 
 class Lead {
   const Lead({
@@ -32,6 +34,10 @@ class Lead {
     this.nextFollowUpAt,
     required this.notesSummary,
     this.sourceMetadata = const {},
+    this.score = 0,
+    this.scoreCategory = LeadScoreCategory.cold,
+    this.dealValue = 0,
+    this.dealStatus = DealStatus.open,
     required this.isArchived,
     required this.isDeleted,
   });
@@ -56,6 +62,10 @@ class Lead {
   final DateTime? nextFollowUpAt;
   final String notesSummary;
   final Map<String, dynamic> sourceMetadata;
+  final int score;
+  final LeadScoreCategory scoreCategory;
+  final double dealValue;
+  final DealStatus dealStatus;
   final bool isArchived;
   final bool isDeleted;
 
@@ -76,6 +86,10 @@ class Lead {
     DateTime? nextFollowUpAt,
     String? notesSummary,
     Map<String, dynamic>? sourceMetadata,
+    int? score,
+    LeadScoreCategory? scoreCategory,
+    double? dealValue,
+    DealStatus? dealStatus,
   }) {
     return Lead(
       id: id,
@@ -98,6 +112,10 @@ class Lead {
       nextFollowUpAt: nextFollowUpAt ?? this.nextFollowUpAt,
       notesSummary: notesSummary ?? this.notesSummary,
       sourceMetadata: sourceMetadata ?? this.sourceMetadata,
+      score: score ?? this.score,
+      scoreCategory: scoreCategory ?? this.scoreCategory,
+      dealValue: dealValue ?? this.dealValue,
+      dealStatus: dealStatus ?? this.dealStatus,
       isArchived: isArchived,
       isDeleted: isDeleted,
     );
@@ -124,6 +142,10 @@ class Lead {
         'nextFollowUpAt': nextFollowUpAt?.toIso8601String(),
         'notesSummary': notesSummary,
         'sourceMetadata': sourceMetadata,
+        'score': score,
+        'scoreCategory': scoreCategory.name,
+        'dealValue': dealValue,
+        'dealStatus': dealStatus.name,
         'isArchived': isArchived,
         'isDeleted': isDeleted,
       };
@@ -155,6 +177,16 @@ class Lead {
         nextFollowUpAt: DateTime.tryParse(map['nextFollowUpAt']?.toString() ?? ''),
         notesSummary: map['notesSummary'] as String? ?? '',
         sourceMetadata: (map['sourceMetadata'] as Map<String, dynamic>?) ?? const {},
+        score: (map['score'] as num?)?.toInt() ?? 0,
+        scoreCategory: LeadScoreCategory.values.firstWhere(
+          (e) => e.name == (map['scoreCategory']?.toString() ?? '').toLowerCase(),
+          orElse: () => LeadScoreCategory.cold,
+        ),
+        dealValue: (map['dealValue'] as num?)?.toDouble() ?? 0,
+        dealStatus: DealStatus.values.firstWhere(
+          (e) => e.name == (map['dealStatus']?.toString() ?? '').toLowerCase(),
+          orElse: () => DealStatus.open,
+        ),
         isArchived: map['isArchived'] as bool? ?? false,
         isDeleted: map['isDeleted'] as bool? ?? false,
       );

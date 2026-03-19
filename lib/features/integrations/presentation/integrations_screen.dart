@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/formatters.dart';
+import '../../app_state/providers.dart';
 import '../../integrations/domain/entities/integration_status.dart';
 import 'providers.dart';
 
@@ -12,6 +13,7 @@ class IntegrationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(integrationStateProvider);
     final notifier = ref.read(integrationStateProvider.notifier);
+    final appState = ref.watch(appStateProvider);
 
     Color stateColor(IntegrationConnectionState s) => switch (s) {
           IntegrationConnectionState.connected => Colors.green,
@@ -46,6 +48,14 @@ class IntegrationsScreen extends ConsumerWidget {
             if (state.loading) const LinearProgressIndicator(),
             if (state.error != null) Text(state.error!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 8),
+            if (!appState.canManageIntegrations)
+              const Card(
+                child: ListTile(
+                  leading: Icon(Icons.lock_outline),
+                  title: Text('Admin access required'),
+                  subtitle: Text('Only workspace owner/admin can manage channel integrations.'),
+                ),
+              ),
             ...state.accounts.map((account) {
               final status = account.status;
               final color = stateColor(status.state);
@@ -91,30 +101,30 @@ class IntegrationsScreen extends ConsumerWidget {
                         runSpacing: 8,
                         children: [
                           FilledButton.tonal(
-                            onPressed: () => notifier.connect(account.id),
+                            onPressed: appState.canManageIntegrations ? () => notifier.connect(account.id) : null,
                             child: const Text('Connect'),
                           ),
                           OutlinedButton(
-                            onPressed: () => notifier.reconnect(account.id),
+                            onPressed: appState.canManageIntegrations ? () => notifier.reconnect(account.id) : null,
                             child: const Text('Reconnect'),
                           ),
                           OutlinedButton(
-                            onPressed: () => notifier.disconnect(account.id),
+                            onPressed: appState.canManageIntegrations ? () => notifier.disconnect(account.id) : null,
                             child: const Text('Disconnect'),
                           ),
                           OutlinedButton(
-                            onPressed: () => notifier.syncNow(account.id),
+                            onPressed: appState.canManageIntegrations ? () => notifier.syncNow(account.id) : null,
                             child: const Text('Sync now'),
                           ),
                           OutlinedButton(
-                            onPressed: () async {
+                            onPressed: appState.canManageIntegrations ? () async {
                               final ok = await ref.read(integrationRepositoryProvider).testConnection(account.id);
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text(ok ? 'Connection test passed' : 'Connection test failed')),
                                 );
                               }
-                            },
+                            } : null,
                             child: const Text('Test'),
                           ),
                         ],

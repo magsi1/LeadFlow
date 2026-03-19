@@ -1,4 +1,15 @@
-enum UserRole { admin, salesperson }
+enum UserRole { owner, admin, manager, salesperson }
+
+extension UserRoleX on UserRole {
+  String get dbValue => switch (this) {
+        UserRole.owner => 'owner',
+        UserRole.admin => 'admin',
+        UserRole.manager => 'manager',
+        UserRole.salesperson => 'sales',
+      };
+
+  bool get isAdminLike => this == UserRole.owner || this == UserRole.admin || this == UserRole.manager;
+}
 
 class AppUser {
   const AppUser({
@@ -10,6 +21,9 @@ class AppUser {
     required this.businessId,
     required this.isActive,
     required this.createdAt,
+    this.workspaceId,
+    this.membershipStatus,
+    this.assignmentCapacity,
   });
 
   final String id;
@@ -20,6 +34,9 @@ class AppUser {
   final String businessId;
   final bool isActive;
   final DateTime createdAt;
+  final String? workspaceId;
+  final String? membershipStatus;
+  final int? assignmentCapacity;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -30,6 +47,9 @@ class AppUser {
         'businessId': businessId,
         'isActive': isActive,
         'createdAt': createdAt.toIso8601String(),
+        'workspaceId': workspaceId,
+        'membershipStatus': membershipStatus,
+        'assignmentCapacity': assignmentCapacity,
       };
 
   factory AppUser.fromMap(Map<String, dynamic> map) => AppUser(
@@ -37,12 +57,22 @@ class AppUser {
         fullName: map['fullName'] as String,
         email: map['email'] as String,
         phone: map['phone'] as String? ?? '',
-        role: UserRole.values.firstWhere(
-          (e) => e.name == map['role'],
-          orElse: () => UserRole.salesperson,
-        ),
+        role: _roleFromString(map['role']?.toString()),
         businessId: map['businessId'] as String? ?? '',
         isActive: map['isActive'] as bool? ?? true,
         createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '') ?? DateTime.now(),
+        workspaceId: map['workspaceId']?.toString(),
+        membershipStatus: map['membershipStatus']?.toString(),
+        assignmentCapacity: (map['assignmentCapacity'] as num?)?.toInt(),
       );
+
+  static UserRole _roleFromString(String? value) {
+    return switch (value) {
+      'owner' => UserRole.owner,
+      'admin' => UserRole.admin,
+      'manager' => UserRole.manager,
+      'sales' || 'salesperson' => UserRole.salesperson,
+      _ => UserRole.salesperson,
+    };
+  }
 }

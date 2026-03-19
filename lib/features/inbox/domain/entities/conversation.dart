@@ -48,6 +48,7 @@ class Conversation {
     String? lastMessagePreview,
     DateTime? lastMessageAt,
     int? unreadCount,
+    Map<String, dynamic>? sourceMetadata,
   }) {
     return Conversation(
       id: id,
@@ -65,7 +66,7 @@ class Conversation {
       stage: stage ?? this.stage,
       intent: intent ?? this.intent,
       isCommentThread: isCommentThread,
-      sourceMetadata: sourceMetadata,
+      sourceMetadata: sourceMetadata ?? this.sourceMetadata,
     );
   }
 }

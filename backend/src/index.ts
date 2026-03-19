@@ -1,0 +1,60 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+console.log('ENV CHECK:', {
+  phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+  accessToken: process.env.WHATSAPP_ACCESS_TOKEN ? 'loaded' : 'missing',
+});
+if (!process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_ACCESS_TOKEN) {
+  console.warn('⚠️ Missing WhatsApp environment variables');
+}
+console.log('WhatsApp Auto Reply Ready ✅');
+
+const PORT = process.env.PORT || 3000;
+
+const bootstrap = async (): Promise<void> => {
+  const [{ buildApp }, { env }, { logger }, { runSupabaseStartupDiagnostics, testSupabaseConnection }] =
+    await Promise.all([
+      import('./app.js'),
+      import('./lib/env.js'),
+      import('./lib/logger.js'),
+      import('./lib/supabaseAdmin.js'),
+    ]);
+
+  const app = buildApp();
+
+  const startServer = (port: number | string, retryCount = 0): void => {
+    const server = app.listen(port, () => {
+      logger.info('LeadFlow webhook backend started', {
+        port,
+        api_base_url: env.apiBaseUrl,
+      });
+      void (async () => {
+        await runSupabaseStartupDiagnostics();
+        await testSupabaseConnection();
+      })();
+    });
+
+    server.on('error', (error) => {
+      const errorObj = error as NodeJS.ErrnoException;
+      if (errorObj.code === 'EADDRINUSE' && retryCount < 10) {
+        const fallbackPort = Number(port) + 1;
+        logger.warn('Port is in use, retrying on fallback port', {
+          requested_port: port,
+          fallback_port: fallbackPort,
+        });
+        startServer(fallbackPort, retryCount + 1);
+        return;
+      }
+
+      logger.error('Backend server failed to start', {
+        port,
+        error: errorObj.message,
+      });
+    });
+  };
+
+  startServer(PORT);
+};
+
+void bootstrap();

@@ -59,6 +59,7 @@ class InboxNotifier extends StateNotifier<InboxState> {
     if (conversationId == null || trimmed.isEmpty) return;
 
     final now = DateTime.now();
+    final clientMessageId = 'cli_${now.microsecondsSinceEpoch}';
     final idx = state.conversations.indexWhere((c) => c.id == conversationId);
     if (idx < 0) return;
     final selectedConversation = state.conversations[idx];
@@ -74,6 +75,7 @@ class InboxNotifier extends StateNotifier<InboxState> {
       createdAt: now,
       direction: 'outgoing',
       status: 'pending',
+      clientMessageId: clientMessageId,
     );
 
     final updatedConversations = state.conversations
@@ -85,7 +87,11 @@ class InboxNotifier extends StateNotifier<InboxState> {
     );
 
     try {
-      await _repository.sendMessage(conversationId: conversationId, text: trimmed);
+      await _repository.sendMessage(
+        conversationId: conversationId,
+        text: trimmed,
+        clientMessageId: clientMessageId,
+      );
       final selectedConversationNow = state.conversations.where((c) => c.id == conversationId).firstOrNull;
       await _ref.read(appStateProvider.notifier).logActivity(
             type: 'message_sent',
@@ -94,8 +100,25 @@ class InboxNotifier extends StateNotifier<InboxState> {
             metadata: {'conversationId': conversationId},
           );
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      final failedMessages = state.messages
+          .map(
+            (m) => m.clientMessageId == clientMessageId
+                ? m.copyWith(
+                    status: 'failed',
+                    errorMessage: e.toString(),
+                    failedAt: DateTime.now(),
+                  )
+                : m,
+          )
+          .toList();
+      state = state.copyWith(error: e.toString(), messages: failedMessages);
     }
+  }
+
+  Future<void> retryMessage(String messageId) async {
+    await _runAction(() async {
+      await _repository.retryMessage(messageId);
+    });
   }
 
   Future<void> assignConversation(String conversationId, String userId) async {
@@ -177,6 +200,37 @@ class InboxNotifier extends StateNotifier<InboxState> {
     });
   }
 
+  Future<void> updateLeadCardStatus({
+    required String conversationId,
+    required String leadId,
+    required String status,
+  }) async {
+    final normalized = status.trim().toUpperCase();
+    final previous = state.conversations;
+    final nextStage = _stageFromCardStatus(normalized);
+    final updated = previous
+        .map((c) {
+          if (c.id != conversationId) return c;
+          final updatedMetadata = <String, dynamic>{
+            ...c.sourceMetadata,
+            'leadStatus': normalized,
+          };
+          return c.copyWith(
+            stage: nextStage,
+            sourceMetadata: updatedMetadata,
+          );
+        })
+        .toList();
+    state = state.copyWith(conversations: updated, clearError: true);
+
+    try {
+      await _repository.updateLeadStatus(leadId, normalized);
+    } catch (e) {
+      state = state.copyWith(conversations: previous, error: e.toString());
+      rethrow;
+    }
+  }
+
   Future<void> scheduleFollowUpFromConversation({
     required String conversationId,
     required String leadId,
@@ -251,6 +305,15 @@ class InboxNotifier extends StateNotifier<InboxState> {
       LeadStatus.followUpNeeded => InboxLeadStage.followUp,
       LeadStatus.closedWon => InboxLeadStage.converted,
       LeadStatus.closedLost => InboxLeadStage.closed,
+    };
+  }
+
+  InboxLeadStage _stageFromCardStatus(String status) {
+    return switch (status) {
+      'CONTACTED' => InboxLeadStage.contacted,
+      'QUALIFIED' => InboxLeadStage.qualified,
+      'CLOSED' => InboxLeadStage.closed,
+      _ => InboxLeadStage.leadNew,
     };
   }
 

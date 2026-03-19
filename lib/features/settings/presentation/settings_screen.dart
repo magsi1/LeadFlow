@@ -11,7 +11,10 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appStateProvider);
+    final notifier = ref.read(appStateProvider.notifier);
     final user = state.currentUser;
+    final activeWorkspaceId = state.activeWorkspaceId;
+    final activeWorkspace = state.activeWorkspace;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -25,6 +28,40 @@ class SettingsScreen extends ConsumerWidget {
             leading: const CircleAvatar(child: Icon(Icons.person)),
           ),
         ),
+        const SizedBox(height: 8),
+        if (state.workspaces.isNotEmpty)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.workspaces_outline),
+              title: const Text('Active Workspace'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(activeWorkspace?.name ?? 'Unknown'),
+                  if (state.workspaces.length > 1) const Text('Switch workspace'),
+                ],
+              ),
+              trailing: state.workspaces.length > 1
+                  ? DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: activeWorkspaceId,
+                        items: state.workspaces
+                            .map(
+                              (w) => DropdownMenuItem<String>(
+                                value: w.id,
+                                child: Text(w.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          await notifier.switchWorkspace(value);
+                        },
+                      ),
+                    )
+                  : null,
+            ),
+          ),
         const SizedBox(height: 8),
         const Card(
           child: Column(
@@ -47,9 +84,13 @@ class SettingsScreen extends ConsumerWidget {
           child: ListTile(
             leading: const Icon(Icons.hub_outlined),
             title: const Text('Integrations'),
-            subtitle: const Text('WhatsApp, Instagram, Facebook and webhook status'),
+            subtitle: Text(
+              state.canManageIntegrations
+                  ? 'WhatsApp, Instagram, Facebook and webhook status'
+                  : 'Admin-only access',
+            ),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push(RoutePaths.integrations),
+            onTap: state.canManageIntegrations ? () => context.push(RoutePaths.integrations) : null,
           ),
         ),
         const SizedBox(height: 16),

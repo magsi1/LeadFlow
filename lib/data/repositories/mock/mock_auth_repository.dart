@@ -2,12 +2,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/utils/iterable_extensions.dart';
 import '../../models/app_user.dart';
-import '../../services/mock_seed_service.dart';
 import '../auth_repository.dart';
 
 class MockAuthRepository implements AuthRepository {
   static const _sessionKey = 'leadflow_session_user';
-  final List<AppUser> _users = MockSeedService.users();
+  final List<AppUser> _users = <AppUser>[];
 
   @override
   Future<AppUser?> restoreSession() async {

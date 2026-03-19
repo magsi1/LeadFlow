@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/backend_providers.dart';
 import '../../../core/utils/iterable_extensions.dart';
 import '../../../core/router/route_paths.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../data/models/follow_up.dart';
 import '../../../data/models/lead.dart';
+import '../../analytics/presentation/providers.dart';
 import '../../app_state/app_state.dart';
 import '../../app_state/providers.dart';
 import '../widgets/dashboard_stat_card.dart';
@@ -14,12 +16,31 @@ import '../widgets/quick_action_button.dart';
 import '../widgets/recent_lead_tile.dart';
 import '../widgets/section_header.dart';
 
+final dashboardSummaryProvider = FutureProvider<Map<String, int>>((ref) async {
+  final api = ref.watch(backendApiClientProvider);
+  final response = await api.get('/analytics/summary');
+  int toInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  return {
+    'totalLeads': toInt(response['totalLeads']),
+    'hotLeads': toInt(response['hotLeads']),
+    'closedLeads': toInt(response['closedLeads']),
+    'todayLeads': toInt(response['todayLeads']),
+  };
+});
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appStateProvider);
+    final analyticsAsync = ref.watch(analyticsSnapshotProvider);
+    final summaryAsync = ref.watch(dashboardSummaryProvider);
     final user = state.currentUser;
     if (user == null) {
       return const EmptyState(title: 'No session', subtitle: 'Please login to continue.');
@@ -28,22 +49,14 @@ class DashboardScreen extends ConsumerWidget {
     final myLeads = state.leads.where((e) => e.assignedTo == user.id).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final viewLeads = (state.isAdmin ? state.leads : myLeads)..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final now = DateTime.now();
-
-    int todayNew = viewLeads
-        .where((e) => e.createdAt.day == now.day && e.createdAt.month == now.month && e.createdAt.year == now.year)
-        .length;
-    int hot = viewLeads.where((e) => e.temperature == LeadTemperature.hot).length;
-    int dueToday = viewLeads
-        .where((e) =>
-            e.nextFollowUpAt != null &&
-            e.nextFollowUpAt!.day == now.day &&
-            e.nextFollowUpAt!.month == now.month &&
-            e.nextFollowUpAt!.year == now.year &&
-            e.status != LeadStatus.closedWon &&
-            e.status != LeadStatus.closedLost)
-        .length;
-    int won = viewLeads.where((e) => e.status == LeadStatus.closedWon).length;
-    final conversionRate = viewLeads.isEmpty ? 0.0 : won / viewLeads.length;
+    final summary = summaryAsync.valueOrNull;
+    final kpis = analyticsAsync.value?.kpis;
+    final todayNew = summary?['todayLeads'] ?? kpis?.newToday ?? 0;
+    final dueToday = kpis?.followUpsDueToday ?? 0;
+    final won = summary?['closedLeads'] ?? kpis?.wonLeads ?? 0;
+    final conversionRate = kpis?.conversionRate ?? 0.0;
+    final hot = summary?['hotLeads'] ?? viewLeads.where((e) => e.temperature == LeadTemperature.hot).length;
+    final totalLeads = summary?['totalLeads'] ?? kpis?.totalLeads ?? viewLeads.length;
     final recentLeads = viewLeads.take(6).toList();
 
     final followUpsToday = state.followUps.where((f) {
@@ -52,7 +65,10 @@ class DashboardScreen extends ConsumerWidget {
     }).take(6).toList();
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(appStateProvider.notifier).refreshData(),
+      onRefresh: () async {
+        ref.invalidate(dashboardSummaryProvider);
+        await ref.read(appStateProvider.notifier).refreshData();
+      },
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
@@ -76,7 +92,7 @@ class DashboardScreen extends ConsumerWidget {
                   DashboardStatCard(
                     icon: Icons.people_alt_outlined,
                     label: state.isAdmin ? 'Total Leads' : 'My Leads',
-                    value: '${viewLeads.length}',
+                    value: '$totalLeads',
                     helper: 'Active pipeline',
                     onTap: () => _openLeadsWithFilter(
                       context,
@@ -181,7 +197,15 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     Expanded(child: _followUpsCard(context, state, followUpsToday)),
                     const SizedBox(width: 12),
-                    Expanded(child: _performanceCard(context, viewLeads, won, dueToday)),
+                    Expanded(
+                      child: _performanceCard(
+                        context,
+                        viewLeads,
+                        won,
+                        dueToday,
+                        analyticsAsync.isLoading,
+                      ),
+                    ),
                   ],
                 )
               else
@@ -189,7 +213,7 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     _followUpsCard(context, state, followUpsToday),
                     const SizedBox(height: 12),
-                    _performanceCard(context, viewLeads, won, dueToday),
+                    _performanceCard(context, viewLeads, won, dueToday, analyticsAsync.isLoading),
                   ],
                 ),
             ],
@@ -407,7 +431,13 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _performanceCard(BuildContext context, List<Lead> leads, int won, int dueToday) {
+  Widget _performanceCard(
+    BuildContext context,
+    List<Lead> leads,
+    int won,
+    int dueToday,
+    bool loading,
+  ) {
     final contacted = leads.where((e) => e.status == LeadStatus.contacted || e.status == LeadStatus.interested).length;
     final followUpNeeded = leads.where((e) => e.status == LeadStatus.followUpNeeded).length;
     final conversion = leads.isEmpty ? 0.0 : won / leads.length;
@@ -448,6 +478,7 @@ class DashboardScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (loading) const LinearProgressIndicator(minHeight: 2),
             SectionHeader(
               title: 'Performance Overview',
               subtitle: '$followUpNeeded need follow-up',

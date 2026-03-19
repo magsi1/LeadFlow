@@ -56,7 +56,11 @@ class MockInboxRepository implements InboxRepository {
   }
 
   @override
-  Future<void> sendMessage({required String conversationId, required String text}) async {
+  Future<void> sendMessage({
+    required String conversationId,
+    required String text,
+    String? clientMessageId,
+  }) async {
     final conversation = _conversations.firstWhere((e) => e.id == conversationId);
     _messages = [
       ..._messages,
@@ -71,6 +75,7 @@ class MockInboxRepository implements InboxRepository {
         createdAt: DateTime.now(),
         direction: 'outgoing',
         status: 'sent',
+        clientMessageId: clientMessageId,
       ),
     ];
     _conversations = _conversations
@@ -89,9 +94,36 @@ class MockInboxRepository implements InboxRepository {
   }
 
   @override
+  Future<void> retryMessage(String messageId) async {
+    final idx = _messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0) return;
+    final original = _messages[idx];
+    if (original.status != 'failed') return;
+    await sendMessage(
+      conversationId: original.conversationId,
+      text: original.text,
+      clientMessageId: 'retry_${DateTime.now().microsecondsSinceEpoch}',
+    );
+  }
+
+  @override
   Future<void> updateConversationStage(String conversationId, InboxLeadStage stage) async {
     _conversations = _conversations
         .map((c) => c.id == conversationId ? c.copyWith(stage: stage) : c)
+        .toList();
+    _emitConversations();
+  }
+
+  @override
+  Future<void> updateLeadStatus(String leadId, String status) async {
+    final stage = switch (status.toUpperCase()) {
+      'CONTACTED' => InboxLeadStage.contacted,
+      'QUALIFIED' => InboxLeadStage.qualified,
+      'CLOSED' => InboxLeadStage.closed,
+      _ => InboxLeadStage.leadNew,
+    };
+    _conversations = _conversations
+        .map((c) => c.leadId == leadId ? c.copyWith(stage: stage) : c)
         .toList();
     _emitConversations();
   }
