@@ -43,7 +43,7 @@ export function buildApp() {
   });
 
   app.get('/', (_req, res) => {
-    res.status(200).send('LeadFlow API is running 🚀');
+    res.status(200).send('API is running');
   });
 
   app.use('/analytics', analyticsRouter);

@@ -14,12 +14,12 @@ console.log('WhatsApp Auto Reply Ready ✅');
 
 const PORT = process.env.PORT || 8080;
 
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled promise rejection:', reason);
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
 });
 
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
 });
 
 const bootstrap = async (): Promise<void> => {
