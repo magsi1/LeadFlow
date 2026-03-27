@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/models/dashboard_lead.dart';
@@ -851,7 +851,10 @@ class _FollowUpBanner extends StatelessWidget {
                     text: '$count',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const TextSpan(text: ' follow-up lead${count == 1 ? '' : 's'}'),
+                  TextSpan(
+                    text:
+                        ' follow-up lead${count == 1 ? '' : 's'}',
+                  ),
                 ],
               ),
             ),
@@ -1220,15 +1223,16 @@ class _LeadBarChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (counts.length != 4) return;
     final maxC = counts.reduce(math.max);
-    final maxBar = maxC <= 0 ? 1 : maxC;
-    final labelPad = 22.0;
+    const maxBar = 1;
+    final denom = maxC <= 0 ? maxBar : maxC;
+    const labelPad = 22.0;
     final chartH = size.height - labelPad - 18;
-    final gap = 12.0;
+    const gap = 12.0;
     final barW = (size.width - gap * 3) / 4;
 
     for (var i = 0; i < 4; i++) {
       final x = i * (barW + gap);
-      final h = (counts[i] / maxBar) * chartH * t;
+      final h = (counts[i] / denom) * chartH * t;
       final top = size.height - labelPad - h;
       final r = RRect.fromRectAndCorners(
         Rect.fromLTWH(x, top, barW, h),
@@ -1625,18 +1629,7 @@ class _LeadCard extends StatelessWidget {
                   children: [
                     _SourceChip(label: sourceLabel),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: LeadFlowColors.textSecondary,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ),
+                    const Spacer(),
                     Text(
                       formattedDate,
                       style: GoogleFonts.plusJakartaSans(
