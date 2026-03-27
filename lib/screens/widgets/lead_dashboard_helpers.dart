@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// Hot / warm / cold badge colors (SaaS-style).
+import '../../core/theme/app_colors.dart';
+
+/// Hot / warm / cold badge colors (unified SaaS palette).
 Color colorForIntent(String intent) {
   switch (intent.toUpperCase()) {
     case 'HOT':
-      return Colors.red.shade400;
+      return AppColors.hot;
     case 'WARM':
-      return Colors.orange.shade400;
+      return AppColors.warm;
     case 'COLD':
-      return Colors.blue.shade400;
+      return AppColors.cold;
     default:
-      return Colors.grey.shade400;
+      return AppColors.textMuted;
   }
 }
 

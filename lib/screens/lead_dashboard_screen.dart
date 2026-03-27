@@ -7,94 +7,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/theme/app_colors.dart';
+import '../core/widgets/app_surface.dart';
 import '../data/models/dashboard_lead.dart';
 import '../data/services/supabase_dashboard_service.dart';
 import '../services/whatsapp_service.dart';
 import 'pipeline_screen.dart';
-
-// ---------------------------------------------------------------------------
-// Design system — LeadFlow
-// ---------------------------------------------------------------------------
-
-abstract final class LeadFlowColors {
-  static const Color bgBase = Color(0xFFF4F6FB);
-  static const Color bgCard = Color(0xFFFFFFFF);
-  static const Color bgCardAlt = Color(0xFFF9FAFD);
-
-  static const Color primary = Color(0xFF4F46E5);
-  static const Color primaryLight = Color(0xFFEEEDFD);
-
-  static const Color hot = Color(0xFFEF4444);
-  static const Color hotBg = Color(0xFFFEF2F2);
-  static const Color warm = Color(0xFFF97316);
-  static const Color warmBg = Color(0xFFFFF7ED);
-  static const Color cold = Color(0xFF3B82F6);
-  static const Color coldBg = Color(0xFFEFF6FF);
-  static const Color stageNew = Color(0xFF8B5CF6);
-  static const Color stageNewBg = Color(0xFFF5F3FF);
-
-  static const Color contacted = Color(0xFF10B981);
-  static const Color followUp = Color(0xFFF59E0B);
-  static const Color closed = Color(0xFF6366F1);
-
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color textMuted = Color(0xFF94A3B8);
-
-  static const Color divider = Color(0xFFE2E8F0);
-}
-
-abstract final class LeadFlowTextStyles {
-  static TextStyle display(BuildContext context) =>
-      GoogleFonts.plusJakartaSans(
-        fontWeight: FontWeight.w700,
-        color: LeadFlowColors.textPrimary,
-      );
-
-  static TextStyle body(BuildContext context) =>
-      GoogleFonts.plusJakartaSans(
-        fontWeight: FontWeight.w400,
-        color: LeadFlowColors.textPrimary,
-      );
-
-  static TextStyle labelMuted(double size) => GoogleFonts.plusJakartaSans(
-        fontWeight: FontWeight.w500,
-        fontSize: size,
-        letterSpacing: 0.5,
-        color: LeadFlowColors.textMuted,
-      );
-
-  static TextStyle numbers(double size, {Color? color, FontWeight? w}) =>
-      GoogleFonts.spaceGrotesk(
-        fontWeight: w ?? FontWeight.w700,
-        fontSize: size,
-        color: color ?? LeadFlowColors.textPrimary,
-      );
-}
-
-BoxDecoration leadFlowCardDecoration({Color? color}) {
-  return BoxDecoration(
-    color: color ?? LeadFlowColors.bgCard,
-    borderRadius: BorderRadius.circular(16),
-    boxShadow: const [
-      BoxShadow(
-        color: Color(0x08000000),
-        blurRadius: 1,
-        offset: Offset(0, 1),
-      ),
-      BoxShadow(
-        color: Color(0x0A000000),
-        blurRadius: 8,
-        offset: Offset(0, 4),
-      ),
-      BoxShadow(
-        color: Color(0x06000000),
-        blurRadius: 20,
-        offset: Offset(0, 10),
-      ),
-    ],
-  );
-}
 
 // --- Data helpers (shared with other screens) ---
 
@@ -138,54 +56,54 @@ String _pipelineStageForUi(String status) {
 Color _temperatureFg(String status) {
   switch (_temperatureBucketFromStatus(status)) {
     case 'hot':
-      return LeadFlowColors.hot;
+      return AppColors.hot;
     case 'warm':
-      return LeadFlowColors.warm;
+      return AppColors.warm;
     case 'cold':
     default:
-      return LeadFlowColors.cold;
+      return AppColors.cold;
   }
 }
 
 Color _temperatureBg(String status) {
   switch (_temperatureBucketFromStatus(status)) {
     case 'hot':
-      return LeadFlowColors.hotBg;
+      return AppColors.hotBg;
     case 'warm':
-      return LeadFlowColors.warmBg;
+      return AppColors.warmBg;
     case 'cold':
     default:
-      return LeadFlowColors.coldBg;
+      return AppColors.coldBg;
   }
 }
 
 Color _pipelineStageFg(String stage) {
   switch (stage) {
     case 'new':
-      return LeadFlowColors.stageNew;
+      return AppColors.statusNew;
     case 'contacted':
-      return LeadFlowColors.contacted;
+      return AppColors.pipelineContacted;
     case 'follow_up':
-      return LeadFlowColors.followUp;
+      return AppColors.pipelineFollowUp;
     case 'closed':
-      return LeadFlowColors.closed;
+      return AppColors.closed;
     default:
-      return LeadFlowColors.textSecondary;
+      return AppColors.textSecondary;
   }
 }
 
 Color _pipelineStageBg(String stage) {
   switch (stage) {
     case 'new':
-      return LeadFlowColors.stageNewBg;
+      return AppColors.newBg;
     case 'contacted':
       return const Color(0xFFECFDF5);
     case 'follow_up':
       return const Color(0xFFFFFBEB);
     case 'closed':
-      return LeadFlowColors.primaryLight;
+      return AppColors.primaryLight;
     default:
-      return LeadFlowColors.bgCardAlt;
+      return AppColors.surfaceMuted;
   }
 }
 
@@ -277,7 +195,10 @@ Future<void> _openWhatsAppForLead(
       SnackBar(
         content: Text(
           'No phone number available',
-          style: LeadFlowTextStyles.body(context),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -298,7 +219,10 @@ Future<void> _openWhatsAppForLead(
       SnackBar(
         content: Text(
           'Message sent (${result.statusCode})',
-          style: LeadFlowTextStyles.body(context),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -308,7 +232,10 @@ Future<void> _openWhatsAppForLead(
       SnackBar(
         content: Text(
           'WhatsApp not configured: $e',
-          style: LeadFlowTextStyles.body(context),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -318,7 +245,10 @@ Future<void> _openWhatsAppForLead(
       SnackBar(
         content: Text(
           'WhatsApp API error: $e',
-          style: LeadFlowTextStyles.body(context),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -328,7 +258,10 @@ Future<void> _openWhatsAppForLead(
       SnackBar(
         content: Text(
           'Could not send: $e',
-          style: LeadFlowTextStyles.body(context),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -492,9 +425,9 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
     final dateFmt = DateFormat.MMMd();
 
     return Scaffold(
-      backgroundColor: LeadFlowColors.bgBase,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: LeadFlowColors.bgBase,
+        backgroundColor: AppColors.background,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -504,13 +437,13 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: LeadFlowColors.primary,
+                color: AppColors.primary,
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
               child: Text(
                 'LF',
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
                   color: Colors.white,
@@ -521,10 +454,10 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
             const SizedBox(width: 10),
             Text(
               'LeadFlow',
-              style: GoogleFonts.plusJakartaSans(
+              style: GoogleFonts.inter(
                 fontWeight: FontWeight.w700,
                 fontSize: 20,
-                color: LeadFlowColors.textPrimary,
+                color: AppColors.textPrimary,
               ),
             ),
           ],
@@ -535,10 +468,10 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
             onPressed: () {},
             icon: CircleAvatar(
               radius: 18,
-              backgroundColor: LeadFlowColors.primary,
+              backgroundColor: AppColors.primary,
               child: Text(
                 _userInitials(),
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                   color: Colors.white,
@@ -549,27 +482,27 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
           IconButton(
             tooltip: 'Refresh',
             onPressed: _reload,
-            icon: const Icon(Icons.refresh_rounded, color: LeadFlowColors.textSecondary),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
           ),
           IconButton(
             tooltip: 'Add person',
             onPressed: _onAddLead,
-            icon: const Icon(Icons.person_add_outlined, color: LeadFlowColors.textSecondary),
+            icon: const Icon(Icons.person_add_outlined, color: AppColors.textSecondary),
           ),
         ],
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1, thickness: 1, color: LeadFlowColors.divider),
+          child: Divider(height: 1, thickness: 1, color: AppColors.divider),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _onAddLead,
-        backgroundColor: LeadFlowColors.primary,
+        backgroundColor: AppColors.primary,
         elevation: 4,
         icon: const Icon(Icons.add, color: Colors.white),
         label: Text(
           'Add Lead',
-          style: GoogleFonts.plusJakartaSans(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 14,
             color: Colors.white,
@@ -590,7 +523,7 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
                 child: Text(
                   'Something went wrong: ${snapshot.error}',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(color: Colors.red),
+                  style: GoogleFonts.inter(color: Colors.red),
                 ),
               ),
             );
@@ -614,7 +547,7 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
 
           return RefreshIndicator(
             onRefresh: _refreshPull,
-            color: LeadFlowColors.primary,
+            color: AppColors.primary,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -625,7 +558,11 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
                   ),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      if (followUpCount > 0) _FollowUpBanner(count: followUpCount),
+                      if (followUpCount > 0)
+                        _FollowUpBanner(
+                          count: followUpCount,
+                          onSendNow: _onAddLead,
+                        ),
                       _StatStrip(
                         total: total,
                         newCount: newC,
@@ -687,36 +624,39 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
                           Expanded(
                             child: TextField(
                               controller: _searchController,
-                              style: LeadFlowTextStyles.body(context),
+                              style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
                               decoration: InputDecoration(
                                 hintText: 'Search leads...',
-                                hintStyle: GoogleFonts.plusJakartaSans(
-                                  color: LeadFlowColors.textMuted,
+                                hintStyle: GoogleFonts.inter(
+                                  color: AppColors.textMuted,
                                   fontSize: 14,
                                 ),
                                 prefixIcon: const Icon(
                                   Icons.search,
-                                  color: LeadFlowColors.textMuted,
+                                  color: AppColors.textMuted,
                                   size: 20,
                                 ),
                                 filled: true,
-                                fillColor: LeadFlowColors.bgCard,
+                                fillColor: AppColors.surface,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: const BorderSide(
-                                    color: LeadFlowColors.divider,
+                                    color: AppColors.divider,
                                   ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: const BorderSide(
-                                    color: LeadFlowColors.divider,
+                                    color: AppColors.divider,
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: const BorderSide(
-                                    color: LeadFlowColors.primary,
+                                    color: AppColors.primary,
                                     width: 1.5,
                                   ),
                                 ),
@@ -765,8 +705,8 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
                       child: Center(
                         child: Text(
                           'No leads match your filters.',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: LeadFlowColors.textSecondary,
+                          style: GoogleFonts.inter(
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -799,7 +739,10 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
                               SnackBar(
                                 content: Text(
                                   'Manage or delete leads from the Pipeline screen.',
-                                  style: LeadFlowTextStyles.body(context),
+                                  style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
                                 ),
                               ),
                             );
@@ -818,48 +761,58 @@ class _LeadDashboardScreenState extends State<LeadDashboardScreen> {
 }
 
 class _FollowUpBanner extends StatelessWidget {
-  const _FollowUpBanner({required this.count});
+  const _FollowUpBanner({
+    required this.count,
+    required this.onSendNow,
+  });
 
   final int count;
+  final VoidCallback onSendNow;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFF3E0), Color(0xFFFFF8F0)],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFCC80), width: 1),
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFE0B2)),
+        boxShadow: AppSurfaces.softShadow,
       ),
       child: Row(
         children: [
-          const Text('🔥', style: TextStyle(fontSize: 18)),
-          const SizedBox(width: 10),
+          const Icon(Icons.local_fire_department_rounded,
+              color: AppColors.warm, size: 26),
+          const SizedBox(width: 12),
           Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  color: LeadFlowColors.textPrimary,
-                ),
-                children: [
-                  const TextSpan(text: 'Message '),
-                  TextSpan(
-                    text: '$count',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  TextSpan(
-                    text:
-                        ' follow-up lead${count == 1 ? '' : 's'}',
-                  ),
-                ],
+            child: Text(
+              'You have $count lead${count == 1 ? '' : 's'} pending follow-up',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+                height: 1.35,
               ),
             ),
           ),
-          const Icon(Icons.chevron_right, color: LeadFlowColors.warm),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onSendNow,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.warm,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              textStyle: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            child: const Text('Send Now'),
+          ),
         ],
       ),
     );
@@ -911,27 +864,27 @@ class _StatStripState extends State<_StatStrip> {
       _StatCard(
         label: 'TOTAL LEADS',
         value: '${widget.total}',
-        valueColor: LeadFlowColors.textPrimary,
+        valueColor: AppColors.textPrimary,
       ),
       _StatCard(
         label: 'NEW',
         value: '${widget.newCount}',
-        valueColor: LeadFlowColors.stageNew,
+        valueColor: AppColors.statusNew,
       ),
       _StatCard(
         label: 'CONTACTED',
         value: '${widget.contactedCount}',
-        valueColor: LeadFlowColors.contacted,
+        valueColor: AppColors.pipelineContacted,
       ),
       _StatCard(
         label: 'FOLLOW-UP',
         value: '${widget.followUpCount}',
-        valueColor: LeadFlowColors.followUp,
+        valueColor: AppColors.pipelineFollowUp,
       ),
       _StatCard(
         label: 'CLOSED',
         value: '${widget.closedCount}',
-        valueColor: LeadFlowColors.closed,
+        valueColor: AppColors.closed,
       ),
       _ProgressStatCard(progress: widget.progressRatio, percentLabel: pct),
     ];
@@ -978,18 +931,27 @@ class _StatCard extends StatelessWidget {
     return Container(
       width: 130,
       padding: const EdgeInsets.all(16),
-      decoration: leadFlowCardDecoration(),
+      decoration: AppSurfaces.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: LeadFlowTextStyles.labelMuted(11),
+            style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.5,
+            color: AppColors.textMuted,
+          ),
           ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: LeadFlowTextStyles.numbers(28, color: valueColor),
+            style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: valueColor,
+          ),
           ),
         ],
       ),
@@ -1011,18 +973,27 @@ class _ProgressStatCard extends StatelessWidget {
     return Container(
       width: 130,
       padding: const EdgeInsets.all(16),
-      decoration: leadFlowCardDecoration(),
+      decoration: AppSurfaces.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'PROGRESS',
-            style: LeadFlowTextStyles.labelMuted(11),
+            style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.5,
+            color: AppColors.textMuted,
+          ),
           ),
           const SizedBox(height: 8),
           Text(
             '${percentLabel.toStringAsFixed(1)}%',
-            style: LeadFlowTextStyles.numbers(28, color: LeadFlowColors.primary),
+            style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -1035,9 +1006,9 @@ class _ProgressStatCard extends StatelessWidget {
                 return LinearProgressIndicator(
                   value: value,
                   minHeight: 6,
-                  backgroundColor: LeadFlowColors.primaryLight,
+                  backgroundColor: AppColors.primaryLight,
                   valueColor: const AlwaysStoppedAnimation<Color>(
-                    LeadFlowColors.primary,
+                    AppColors.primary,
                   ),
                 );
               },
@@ -1064,7 +1035,7 @@ class _PipelineOverviewSection extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 20),
       padding: const EdgeInsets.all(20),
-      decoration: leadFlowCardDecoration(),
+      decoration: AppSurfaces.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1072,19 +1043,19 @@ class _PipelineOverviewSection extends StatelessWidget {
             children: [
               Text(
                 'Pipeline Overview',
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
-                  color: LeadFlowColors.textPrimary,
+                  color: AppColors.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 'This month',
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.w400,
                   fontSize: 12,
-                  color: LeadFlowColors.textMuted,
+                  color: AppColors.textMuted,
                 ),
               ),
             ],
@@ -1102,19 +1073,19 @@ class _PipelineOverviewSection extends StatelessWidget {
             children: [
               Text(
                 'Contacted or beyond',
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: LeadFlowColors.textSecondary,
+                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w400,
                 ),
               ),
               const Spacer(),
               Text(
                 '${pct.toStringAsFixed(1)}%',
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: LeadFlowColors.primary,
+                  color: AppColors.primary,
                 ),
               ),
             ],
@@ -1130,9 +1101,9 @@ class _PipelineOverviewSection extends StatelessWidget {
                 return LinearProgressIndicator(
                   value: value,
                   minHeight: 6,
-                  backgroundColor: LeadFlowColors.primaryLight,
+                  backgroundColor: AppColors.primaryLight,
                   valueColor: const AlwaysStoppedAnimation<Color>(
-                    LeadFlowColors.primary,
+                    AppColors.primary,
                   ),
                 );
               },
@@ -1213,10 +1184,10 @@ class _LeadBarChartPainter extends CustomPainter {
 
   static const _labels = ['New', 'Contacted', 'Follow-up', 'Closed'];
   static const _colors = [
-    LeadFlowColors.stageNew,
-    LeadFlowColors.contacted,
-    LeadFlowColors.followUp,
-    LeadFlowColors.closed,
+    AppColors.statusNew,
+    AppColors.pipelineContacted,
+    AppColors.pipelineFollowUp,
+    AppColors.closed,
   ];
 
   @override
@@ -1248,7 +1219,7 @@ class _LeadBarChartPainter extends CustomPainter {
           style: GoogleFonts.spaceGrotesk(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: LeadFlowColors.textPrimary,
+            color: AppColors.textPrimary,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -1258,10 +1229,10 @@ class _LeadBarChartPainter extends CustomPainter {
       final bl = TextPainter(
         text: TextSpan(
           text: _labels[i],
-          style: GoogleFonts.plusJakartaSans(
+          style: GoogleFonts.inter(
             fontSize: 10,
             fontWeight: FontWeight.w500,
-            color: LeadFlowColors.textMuted,
+            color: AppColors.textMuted,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -1301,13 +1272,13 @@ class _PipelineTab extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          splashColor: LeadFlowColors.primaryLight,
+          splashColor: AppColors.primaryLight,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: active ? LeadFlowColors.primary : LeadFlowColors.bgCardAlt,
+              color: active ? AppColors.primary : AppColors.surfaceMuted,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -1315,12 +1286,12 @@ class _PipelineTab extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.inter(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                     color: active
                         ? Colors.white
-                        : LeadFlowColors.textSecondary,
+                        : AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1329,7 +1300,7 @@ class _PipelineTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: active
                         ? Colors.white.withValues(alpha: 0.25)
-                        : LeadFlowColors.bgCard,
+                        : AppColors.surface,
                     shape: BoxShape.circle,
                   ),
                   child: Text(
@@ -1339,7 +1310,7 @@ class _PipelineTab extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: active
                           ? Colors.white
-                          : LeadFlowColors.textSecondary,
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -1379,23 +1350,23 @@ class _FilterDropdown extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: LeadFlowColors.bgCard,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: LeadFlowColors.divider),
+          border: Border.all(color: AppColors.divider),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               options.firstWhere((o) => o.value == value).label,
-              style: GoogleFonts.plusJakartaSans(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: LeadFlowColors.textSecondary,
+                color: AppColors.textSecondary,
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, color: LeadFlowColors.textMuted),
+            const Icon(Icons.arrow_drop_down, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -1405,9 +1376,9 @@ class _FilterDropdown extends StatelessWidget {
               value: o.value,
               child: Text(
                 o.label,
-                style: GoogleFonts.plusJakartaSans(
+                style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: LeadFlowColors.textPrimary,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ),
@@ -1435,7 +1406,7 @@ class _IconBtn extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
-        splashColor: LeadFlowColors.primaryLight,
+        splashColor: AppColors.primaryLight,
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: Icon(icon, size: 20, color: color),
@@ -1455,17 +1426,17 @@ class _SourceChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: LeadFlowColors.bgCardAlt,
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: LeadFlowColors.divider),
+        border: Border.all(color: AppColors.divider),
       ),
       child: Text(
         label,
-        style: GoogleFonts.plusJakartaSans(
+        style: GoogleFonts.inter(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
-          color: LeadFlowColors.textSecondary,
+          color: AppColors.textSecondary,
         ),
       ),
     );
@@ -1491,7 +1462,7 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         _pipelineStageLabel(stage),
-        style: GoogleFonts.plusJakartaSans(
+        style: GoogleFonts.inter(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.5,
@@ -1533,10 +1504,10 @@ class _LeadCard extends StatelessWidget {
       child: InkWell(
         onTap: () {},
         borderRadius: BorderRadius.circular(16),
-        splashColor: LeadFlowColors.primaryLight,
+        splashColor: AppColors.primaryLight,
         child: Ink(
           decoration: BoxDecoration(
-            color: LeadFlowColors.bgCard,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border(
               left: BorderSide(color: borderColor, width: 4),
@@ -1571,7 +1542,7 @@ class _LeadCard extends StatelessWidget {
                       backgroundColor: _temperatureBg(lead.status),
                       child: Text(
                         initials,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: _temperatureFg(lead.status),
@@ -1585,18 +1556,18 @@ class _LeadCard extends StatelessWidget {
                         children: [
                           Text(
                             name,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: GoogleFonts.inter(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: LeadFlowColors.textPrimary,
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             phone,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: GoogleFonts.inter(
                               fontSize: 13,
-                              color: LeadFlowColors.textMuted,
+                              color: AppColors.textMuted,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -1607,23 +1578,23 @@ class _LeadCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     _IconBtn(
                       icon: Icons.chat_bubble_outline,
-                      color: LeadFlowColors.contacted,
+                      color: AppColors.pipelineContacted,
                       onPressed: onChat,
                     ),
                     _IconBtn(
                       icon: Icons.edit_outlined,
-                      color: LeadFlowColors.textMuted,
+                      color: AppColors.textMuted,
                       onPressed: onEdit,
                     ),
                     _IconBtn(
                       icon: Icons.delete_outline,
-                      color: LeadFlowColors.hot,
+                      color: AppColors.hot,
                       onPressed: onDelete,
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Divider(height: 1, color: LeadFlowColors.divider),
+                const Divider(height: 1, color: AppColors.divider),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1632,9 +1603,9 @@ class _LeadCard extends StatelessWidget {
                     const Spacer(),
                     Text(
                       formattedDate,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: LeadFlowColors.textMuted,
+                        color: AppColors.textMuted,
                         fontWeight: FontWeight.w400,
                       ),
                     ),

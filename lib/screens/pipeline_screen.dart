@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/theme/app_colors.dart';
+import '../core/widgets/app_surface.dart';
 import '../services/lead_service.dart';
 import '../services/user_service.dart';
 import 'widgets/lead_dashboard_helpers.dart';
@@ -61,26 +63,31 @@ Widget buildStatusBadge(String status) {
   Color color;
   switch (status.toLowerCase()) {
     case 'hot':
-      color = Colors.red;
+      color = AppColors.hot;
       break;
     case 'warm':
-      color = Colors.orange;
+      color = AppColors.warm;
       break;
     case 'cold':
-      color = Colors.blue;
+      color = AppColors.cold;
       break;
     default:
-      color = Colors.grey;
+      color = AppColors.textMuted;
   }
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.2),
-      borderRadius: BorderRadius.circular(12),
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(8),
     ),
     child: Text(
       status.toUpperCase(),
-      style: TextStyle(color: color, fontWeight: FontWeight.bold),
+      style: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w700,
+        fontSize: 11,
+        letterSpacing: 0.4,
+      ),
     ),
   );
 }
@@ -183,15 +190,15 @@ String _pipelineColumnTitle(String stage) {
 Color _pipelineStageAccent(String stage) {
   switch (stage) {
     case 'new':
-      return Colors.blue.shade700;
+      return AppColors.pipelineNew;
     case 'contacted':
-      return Colors.teal.shade700;
+      return AppColors.pipelineContacted;
     case 'follow_up':
-      return Colors.orange.shade800;
+      return AppColors.pipelineFollowUp;
     case 'closed':
-      return Colors.green.shade700;
+      return AppColors.pipelineClosed;
     default:
-      return Colors.grey.shade600;
+      return AppColors.textMuted;
   }
 }
 
@@ -1341,13 +1348,14 @@ class _PipelineScreenState extends State<PipelineScreen> {
     final user = Supabase.instance.client.auth.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FC),
+      backgroundColor: AppColors.background,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(right: 24, bottom: 24),
         child: FloatingActionButton(
-          backgroundColor: Colors.deepPurple.shade200,
-          elevation: 6,
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 4,
           onPressed: () async {
             final saved = await showDialog<bool>(
               context: context,
@@ -1362,18 +1370,12 @@ class _PipelineScreenState extends State<PipelineScreen> {
       ),
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        actionsIconTheme: const IconThemeData(color: Colors.black87),
-        title: const Text(
-          'LeadFlow',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
+        foregroundColor: AppColors.textPrimary,
+        iconTheme: const IconThemeData(color: AppColors.textSecondary),
+        actionsIconTheme: const IconThemeData(color: AppColors.textSecondary),
+        title: const Text('LeadFlow'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -2076,20 +2078,32 @@ class _PipelineScreenState extends State<PipelineScreen> {
                                   ),
                               ];
 
+                              List<Widget> spacedColumns() {
+                                if (rowChildren.isEmpty) return rowChildren;
+                                final out = <Widget>[];
+                                for (var i = 0; i < rowChildren.length; i++) {
+                                  if (i > 0) {
+                                    out.add(const SizedBox(width: 12));
+                                  }
+                                  out.add(rowChildren[i]);
+                                }
+                                return out;
+                              }
+
                               if (useHorizontalScroll) {
                                 return SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
                                   child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                    children: rowChildren,
+                                    children: spacedColumns(),
                                   ),
                                 );
                               }
 
                               return Row(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: rowChildren,
+                                children: spacedColumns(),
                               );
                             },
                           );
@@ -2136,15 +2150,9 @@ class _PipelineStageColumn extends StatelessWidget {
       margin: const EdgeInsets.all(8),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: AppSurfaces.softShadow,
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
@@ -2201,7 +2209,7 @@ class _PipelineStageColumn extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isHovering
                             ? accent.withValues(alpha: 0.08)
-                            : const Color(0xFFF7F9FC),
+                            : AppColors.background,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isHovering

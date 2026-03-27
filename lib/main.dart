@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'web_url_strategy_stub.dart'
     if (dart.library.html) 'web_url_strategy_web.dart' as web_url_strategy;
 
+import 'core/theme/app_theme.dart';
 import 'services/followup_service.dart';
 import 'screens/leads_screen.dart';
 import 'screens/login_screen.dart';
@@ -24,11 +25,13 @@ class LeadFlowLoadingApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = buildAppTheme();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'LeadFlow',
+      theme: theme,
       home: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -37,9 +40,8 @@ class LeadFlowLoadingApp extends StatelessWidget {
               const SizedBox(height: 20),
               Text(
                 'Loading…',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade700,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                 ),
               ),
             ],
@@ -61,8 +63,9 @@ class LeadFlowStartupErrorApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'LeadFlow',
+      theme: buildAppTheme(),
       home: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: buildAppTheme().scaffoldBackgroundColor,
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -226,26 +229,7 @@ class _LeadFlowAppState extends State<LeadFlowApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'LeadFlow',
-      theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: IconThemeData(color: Colors.black),
-          titleTextStyle: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
+      theme: buildAppTheme(),
       home: _session != null ? const LeadsScreen() : const LoginScreen(),
       routes: <String, WidgetBuilder>{
         '/login': (context) => const LoginScreen(),

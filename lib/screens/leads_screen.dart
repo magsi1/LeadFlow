@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/theme/app_colors.dart';
+import '../core/theme/app_spacing.dart';
 import '../core/auth/supabase_auth_helpers.dart';
 import '../core/utils/phone_validation.dart';
 import '../data/models/api_lead.dart';
@@ -233,17 +235,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF0F172A) : Colors.white,
+          color: active ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: active ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+            color: active ? AppColors.primary : AppColors.border,
           ),
           boxShadow: active
-              ? const [
+              ? [
                   BoxShadow(
-                    color: Color(0x220F172A),
+                    color: AppColors.primary.withValues(alpha: 0.25),
                     blurRadius: 12,
-                    offset: Offset(0, 4),
+                    offset: const Offset(0, 4),
                   ),
                 ]
               : const [],
@@ -253,7 +255,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF334155),
+            color: active ? Colors.white : AppColors.textSecondary,
           ),
         ),
       ),
@@ -266,16 +268,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required Color accent,
   }) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 180),
-      padding: const EdgeInsets.all(16),
+      constraints: const BoxConstraints(minWidth: 180, minHeight: 100),
+      padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x14000000),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 14,
-            offset: Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -286,7 +288,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             title,
             style: const TextStyle(
               fontSize: 13,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1095,12 +1097,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF0F172A),
-        elevation: 1,
-        shadowColor: const Color(0x1A000000),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textPrimary,
         surfaceTintColor: Colors.transparent,
         centerTitle: false,
         title: Column(
@@ -1108,25 +1110,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'LeadFlow Dashboard',
+              'LeadFlow',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: const Color(0xFF0F172A),
-                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
                     fontSize: 20,
-                  ) ??
-                  const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
                   ),
             ),
             Text(
               Supabase.instance.client.auth.currentUser?.email ?? 'No user',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-                fontWeight: FontWeight.normal,
-              ),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textMuted,
+                  ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1135,7 +1130,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         actions: [
           IconButton(
             tooltip: 'Dashboard',
-            icon: const Icon(Icons.dashboard_outlined),
+            icon: const Icon(Icons.dashboard_outlined, color: AppColors.textSecondary),
             onPressed: () {
               Navigator.push<void>(
                 context,
@@ -1147,7 +1142,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
           IconButton(
             tooltip: 'Pipeline',
-            icon: const Icon(Icons.view_column),
+            icon: const Icon(Icons.view_column, color: AppColors.textSecondary),
             onPressed: () {
               Navigator.push<void>(
                 context,
@@ -1164,11 +1159,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 : () {
                     unawaited(_loadLeads());
                   },
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: AppColors.textSecondary),
           ),
           IconButton(
             tooltip: 'Sign Out',
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: AppColors.textSecondary),
             onPressed: () async {
               try {
                 await Supabase.instance.client.auth.signOut();
@@ -1279,7 +1274,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                     cacheExtent: 400,
                     slivers: [
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                         sliver: SliverToBoxAdapter(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1287,13 +1282,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'LeadFlow Dashboard',
-                              style: TextStyle(
-                                fontSize: 30,
+                              'Dashboard',
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -1307,12 +1302,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'Manage your leads efficiently',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF64748B),
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
                       ),
                       if (selectedFilter != 'all' ||
                           _searchController.text.trim().isNotEmpty) ...[
@@ -1334,7 +1328,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           hintText: 'Search by name, phone, or source…',
                           prefixIcon: const Icon(
                             Icons.search,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textMuted,
                           ),
                           suffixIcon: _searchController.text.isEmpty
                               ? null
@@ -1347,27 +1341,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                   },
                                 ),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: AppColors.surface,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 14,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                             borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
+                              color: AppColors.border,
                             ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                             borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
+                              color: AppColors.border,
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                             borderSide: const BorderSide(
-                              color: Color(0xFF0F172A),
+                              color: AppColors.primary,
                               width: 1.5,
                             ),
                           ),
@@ -1381,22 +1375,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           _buildStatCard(
                             title: 'Total Leads',
                             value: '$totalLeads',
-                            accent: const Color(0xFF0F172A),
+                            accent: AppColors.textPrimary,
                           ),
                           _buildStatCard(
                             title: 'Hot Leads',
                             value: '$hotLeads',
-                            accent: const Color(0xFFE53935),
+                            accent: AppColors.hot,
                           ),
                           _buildStatCard(
                             title: 'Warm Leads',
                             value: '$warmLeads',
-                            accent: const Color(0xFFFF9800),
+                            accent: AppColors.warm,
                           ),
                           _buildStatCard(
                             title: 'Cold Leads',
                             value: '$coldLeads',
-                            accent: const Color(0xFF1E88E5),
+                            accent: AppColors.cold,
                           ),
                         ],
                       ),

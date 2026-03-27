@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_surface.dart';
 import 'lead_dashboard_helpers.dart';
 
 /// Primary action pill — hover fill + pointer; [onTap] runs status cycle in parent.
@@ -93,12 +95,12 @@ class LeadCard extends StatefulWidget {
 class _LeadCardState extends State<LeadCard> {
   bool isHovering = false;
 
-  static const _radius = 20.0;
+  static const _radius = 18.0;
 
   static const _nameStyle = TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: Colors.black87,
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary,
   );
 
   @override
@@ -114,34 +116,38 @@ class _LeadCardState extends State<LeadCard> {
     final autoReplied = lead['auto_replied'] == true;
 
     final locked = widget.lockActions;
-    final elevation = isHovering ? 10.0 : 4.0;
 
-    final messageStyle = TextStyle(
+    const messageStyle = TextStyle(
       fontSize: 14,
       height: 1.35,
-      color: Colors.grey.shade700,
+      color: AppColors.textSecondary,
     );
-    final dateStyle = TextStyle(
+    const dateStyle = TextStyle(
       fontSize: 12,
-      color: Colors.grey.shade500,
-    );
-
-    final outlineSide = BorderSide(
-      color: Colors.grey.withValues(alpha: 0.08),
+      color: AppColors.textMuted,
     );
 
     return MouseRegion(
       onEnter: (_) => setState(() => isHovering = true),
       onExit: (_) => setState(() => isHovering = false),
-      child: Card(
-        elevation: elevation,
-        shadowColor: Colors.black.withValues(alpha: 0.15),
-        color: Colors.white,
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(_radius),
-          side: outlineSide,
+          border: Border.all(
+            color: AppColors.border.withValues(alpha: 0.5),
+          ),
+          boxShadow: isHovering
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : AppSurfaces.softShadow,
         ),
         child: InkWell(
           onTap: widget.onOpenDetails,
@@ -153,7 +159,7 @@ class _LeadCardState extends State<LeadCard> {
               border: Border(
                 left: BorderSide(
                   color: statusColor,
-                  width: 8,
+                  width: 5,
                 ),
               ),
             ),
@@ -219,14 +225,14 @@ class _LeadCardState extends State<LeadCard> {
                             const Icon(
                               Icons.chat,
                               size: 14,
-                              color: Color(0xFF9E9E9E),
+                              color: AppColors.textMuted,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 source.toUpperCase(),
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -261,7 +267,7 @@ class _LeadCardState extends State<LeadCard> {
                           onPressed: locked ? null : widget.onEdit,
                           icon: const Icon(
                             Icons.edit_outlined,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         IconButton(
@@ -271,7 +277,7 @@ class _LeadCardState extends State<LeadCard> {
                           onPressed: locked ? null : widget.onDelete,
                           icon: const Icon(
                             Icons.delete_outline,
-                            color: Color(0xFFDC2626),
+                            color: AppColors.hot,
                           ),
                         ),
                       ],
