@@ -7,10 +7,6 @@ class DashboardLead {
     required this.createdAt,
     this.followUpTime,
     this.followUpSent = false,
-    this.email,
-    this.source,
-    this.notes,
-    this.messagePreview,
   });
 
   final String id;
@@ -29,20 +25,7 @@ class DashboardLead {
   /// Whether the automated follow-up WhatsApp was already sent (`follow_up_sent` in DB).
   final bool followUpSent;
 
-  final String? email;
-
-  /// `source` column (e.g. WHATSAPP, FACEBOOK).
-  final String? source;
-
-  /// `notes` column.
-  final String? notes;
-
-  /// Latest inquiry from `message` column (optional).
-  final String? messagePreview;
-
   factory DashboardLead.fromRow(Map<String, dynamic> row) {
-    final src = (row['source'] ?? '').toString().trim();
-    final msg = (row['message'] ?? '').toString().trim();
     return DashboardLead(
       id: (row['id'] ?? '').toString(),
       name: (row['name'] ?? '').toString().trim().isEmpty
@@ -53,14 +36,6 @@ class DashboardLead {
       createdAt: DateTime.tryParse((row['created_at'] ?? '').toString()),
       followUpTime: _parseFollowUpTime(row),
       followUpSent: _parseFollowUpSent(row),
-      email: (row['email'] ?? '').toString().trim().isEmpty
-          ? null
-          : (row['email'] ?? '').toString().trim(),
-      source: src.isEmpty ? null : src,
-      notes: (row['notes'] ?? '').toString().trim().isEmpty
-          ? null
-          : (row['notes'] ?? '').toString().trim(),
-      messagePreview: msg.isEmpty ? null : msg,
     );
   }
 

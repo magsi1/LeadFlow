@@ -24,7 +24,7 @@ class SupabaseDashboardService {
     final response = await _c
         .from('leads')
         .select(
-          'id,name,phone,status,stage,created_at,follow_up_time,follow_up_sent,source,notes,email,message',
+          'id,name,phone,status,stage,created_at,follow_up_time,follow_up_sent',
         )
         .eq('assigned_to', uid)
         .order('created_at', ascending: false)
