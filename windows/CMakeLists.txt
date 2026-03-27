@@ -1,3 +1,5 @@
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
 project(leadflow LANGUAGES CXX)
@@ -8,8 +10,7 @@ set(BINARY_NAME "leadflow")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
-cmake_policy(VERSION 3.14...3.25)
-
+cmake_minimum_required(VERSION 3.5...3.25)
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(IS_MULTICONFIG)

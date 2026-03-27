@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/api_lead.dart';
 
@@ -12,20 +13,41 @@ class LeadsApiService {
       'https://leadflow-production-7103.up.railway.app';
   final http.Client _client;
 
+  String _requireUserId() {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null || uid.isEmpty) {
+      throw Exception('User not logged in');
+    }
+    return uid;
+  }
+
+  /// Unwraps `{ ok: true, data: T }` (HTTP body is like axios `response.data`; list/single payload is `data`).
+  Map<String, dynamic> _parseEnvelope(
+    String body, {
+    String fallbackError = 'Request failed',
+  }) {
+    final decoded = jsonDecode(body) as Map<String, dynamic>;
+    if (decoded['ok'] != true) {
+      throw Exception((decoded['error'] ?? fallbackError).toString());
+    }
+    return decoded;
+  }
+
   Future<List<ApiLead>> fetchLeads() async {
-    final uri = Uri.parse('$_baseUrl/api/leads');
+    final userId = _requireUserId();
+    final uri = Uri.parse(
+      '$_baseUrl/api/leads?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
     final response = await _client.get(uri);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Failed to fetch leads (${response.statusCode})');
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final ok = decoded['ok'] == true;
-    if (!ok) {
-      throw Exception((decoded['error'] ?? 'Failed to fetch leads').toString());
-    }
-
-    final data = decoded['data'];
+    final envelope = _parseEnvelope(
+      response.body,
+      fallbackError: 'Failed to fetch leads',
+    );
+    final data = envelope['data'];
     if (data is! List) {
       return <ApiLead>[];
     }
@@ -41,13 +63,18 @@ class LeadsApiService {
   Future<ApiLead> addLead({
     required String name,
     required String phone,
+    String email = '',
     String status = 'new',
   }) async {
+    final userId = _requireUserId();
     final uri = Uri.parse('$_baseUrl/api/leads');
+    final trimmedEmail = email.trim();
     final payload = jsonEncode(<String, dynamic>{
       'name': name.trim(),
       'phone': phone.trim(),
       'status': status.trim().toLowerCase(),
+      'user_id': userId,
+      if (trimmedEmail.isNotEmpty) 'email': trimmedEmail,
     });
     final response = await _client.post(
       uri,
@@ -61,13 +88,11 @@ class LeadsApiService {
       throw Exception('Failed to add lead (${response.statusCode})');
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final ok = decoded['ok'] == true;
-    if (!ok) {
-      throw Exception((decoded['error'] ?? 'Failed to add lead').toString());
-    }
-
-    final data = decoded['data'];
+    final envelope = _parseEnvelope(
+      response.body,
+      fallbackError: 'Failed to add lead',
+    );
+    final data = envelope['data'];
     if (data is! Map) {
       throw Exception('Invalid lead response');
     }
@@ -78,6 +103,7 @@ class LeadsApiService {
     required String id,
     required String status,
   }) async {
+    final userId = _requireUserId();
     final uri = Uri.parse('$_baseUrl/api/leads/$id');
     final response = await _client.put(
       uri,
@@ -86,6 +112,7 @@ class LeadsApiService {
       },
       body: jsonEncode(<String, dynamic>{
         'status': status.trim().toLowerCase(),
+        'user_id': userId,
       }),
     );
 
@@ -93,15 +120,11 @@ class LeadsApiService {
       throw Exception('Failed to update lead (${response.statusCode})');
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final ok = decoded['ok'] == true;
-    if (!ok) {
-      throw Exception(
-        (decoded['error'] ?? 'Failed to update lead status').toString(),
-      );
-    }
-
-    final data = decoded['data'];
+    final envelope = _parseEnvelope(
+      response.body,
+      fallbackError: 'Failed to update lead status',
+    );
+    final data = envelope['data'];
     if (data is! Map) {
       throw Exception('Invalid lead response');
     }

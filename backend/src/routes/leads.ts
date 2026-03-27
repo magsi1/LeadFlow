@@ -63,6 +63,42 @@ function validateNamePhoneStatus(name: string, phone: string, status: string | u
   return null
 }
 
+/** Public list shape for GET /leads and GET /api/leads (same router). */
+export type LeadListApiRow = {
+  id: string
+  name: string
+  phone: string
+  email: string
+  source: string
+  status: string
+  created_at: string
+}
+
+function stringField(value: unknown): string {
+  if (value == null) return ''
+  return String(value)
+}
+
+/**
+ * Maps a Supabase `leads` row to a stable API payload.
+ * `source` prefers `source`, then `source_channel` (Flutter/DB naming drift).
+ */
+export function normalizeLeadListRow(row: Record<string, unknown>): LeadListApiRow {
+  const fromSource = cleanString(row.source)
+  const fromChannel = cleanString(row.source_channel)
+  const source = fromSource.length > 0 ? fromSource : fromChannel
+
+  return {
+    id: stringField(row.id),
+    name: stringField(row.name),
+    phone: stringField(row.phone),
+    email: stringField(row.email),
+    source,
+    status: stringField(row.status).toLowerCase() || 'new',
+    created_at: stringField(row.created_at),
+  }
+}
+
 leadsRouter.use(requireUserId)
 
 leadsRouter.get('/', async (req, res) => {
@@ -75,6 +111,7 @@ leadsRouter.get('/', async (req, res) => {
   const from = (page - 1) * limit
   const to = from + limit - 1
 
+  // Fetch full rows from Supabase; response is normalized to id, name, phone, email, source, status, created_at.
   let query = supabase
     .from('leads')
     .select('*')
@@ -92,7 +129,9 @@ leadsRouter.get('/', async (req, res) => {
 
   if (search.length > 0) {
     const escapedSearch = search.replace(/,/g, ' ')
-    query = query.or(`name.ilike.%${escapedSearch}%,phone.ilike.%${escapedSearch}%`)
+    query = query.or(
+      `name.ilike.%${escapedSearch}%,phone.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%`,
+    )
   }
 
   const { data, error } = await query
@@ -101,15 +140,19 @@ leadsRouter.get('/', async (req, res) => {
     return
   }
 
-  sendSuccess(res, 200, data ?? [])
+  const rows = (data ?? []) as Record<string, unknown>[]
+  const normalized: LeadListApiRow[] = rows.map((r) => normalizeLeadListRow(r))
+  sendSuccess(res, 200, normalized)
 })
 
 leadsRouter.post('/', async (req, res) => {
   const userId = getRequiredUserId(res)
 
-  const body = (req.body as { name?: unknown; phone?: unknown; status?: unknown } | undefined) ?? {}
+  const body =
+    (req.body as { name?: unknown; phone?: unknown; status?: unknown; email?: unknown } | undefined) ?? {}
   const name = cleanString(body.name)
   const phone = cleanString(body.phone)
+  const email = cleanString(body.email)
   const rawStatus = cleanString(body.status).toLowerCase()
   const status = rawStatus.length > 0 ? rawStatus : 'new'
 
@@ -119,13 +162,16 @@ leadsRouter.post('/', async (req, res) => {
     return
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     id: randomUUID(),
     user_id: userId,
     name,
     phone,
     status,
     created_at: new Date().toISOString(),
+  }
+  if (email.length > 0) {
+    payload.email = email
   }
 
   const { data, error } = await supabase.from('leads').insert([payload]).select('*').single()
@@ -145,7 +191,8 @@ leadsRouter.put('/:id', async (req, res) => {
     return
   }
 
-  const body = (req.body as { name?: unknown; phone?: unknown; status?: unknown } | undefined) ?? {}
+  const body =
+    (req.body as { name?: unknown; phone?: unknown; status?: unknown; email?: unknown } | undefined) ?? {}
   const patch: Record<string, unknown> = {}
 
   if (body.name !== undefined) {
@@ -173,6 +220,11 @@ leadsRouter.put('/:id', async (req, res) => {
       return
     }
     patch.status = status
+  }
+
+  if (body.email !== undefined) {
+    const email = cleanString(body.email)
+    patch.email = email.length > 0 ? email : null
   }
 
   if (Object.keys(patch).length === 0) {

@@ -5,6 +5,39 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../errors/app_exception.dart';
 
+/// Unwraps LeadFlow REST `{ "ok": true, "data": ... }`.
+///
+/// With `package:http`, `jsonDecode(response.body)` matches axios **`response.data`**;
+/// the inner payload is **`response.data.data`** in JS — in Dart use **`decoded['data']`**
+/// or [LeadflowApiEnvelope] below.
+class LeadflowApiEnvelope {
+  LeadflowApiEnvelope._();
+
+  static void ensureOk(Map<String, dynamic> decoded) {
+    if (decoded['ok'] == true) return;
+    final err = decoded['error']?.toString() ?? 'Request failed';
+    throw AppException(err, code: 'LEADFLOW_API');
+  }
+
+  /// Expects `data` to be a JSON array.
+  static List<dynamic> expectDataList(Map<String, dynamic> decoded) {
+    ensureOk(decoded);
+    final data = decoded['data'];
+    if (data is! List) return <dynamic>[];
+    return data;
+  }
+
+  /// Expects `data` to be a JSON object.
+  static Map<String, dynamic>? expectDataMap(Map<String, dynamic> decoded) {
+    ensureOk(decoded);
+    final data = decoded['data'];
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return null;
+  }
+}
+
 abstract class BackendApiClient {
   Future<Map<String, dynamic>> get(String path);
   Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? body});

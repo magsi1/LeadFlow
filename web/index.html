@@ -14,7 +14,7 @@
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
-  <base href="/">
+  <base href="/" />
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -34,13 +34,11 @@
 </head>
 <body>
   <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
+    After `flutter build web`, `flutter_bootstrap.js` is emitted next to `flutter.js`.
+    The bootstrap file bundles the Flutter web loader (flutter.js logic) + `buildConfig`
+    + `loader.load()`. Loading only bootstrap avoids double-initialization.
+    `flutter.js` is still deployed alongside `main.dart.js` for the engine (CanvasKit path).
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script src="flutter_bootstrap.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,21 @@
+# Flutter build folders
+build/
+.dart_tool/
+
+# Platform folders
+android/
+ios/
+web/
+windows/
+linux/
+macos/
+
+# Node (if any backend exists)
+node_modules/
+
+# Git
+.git/
+
+# Optional
+coverage/
+.env

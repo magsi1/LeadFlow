@@ -1,6 +1,7 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/utils/supabase_signup_messages.dart';
 import '../../models/app_user.dart';
 import '../auth_repository.dart';
 
@@ -45,27 +46,42 @@ class SupabaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {
-        'full_name': fullName,
-        'role': 'sales',
-      },
-    );
-    final authUser = response.user;
-    if (authUser == null) {
-      throw Exception('Signup requires email confirmation or failed to create account.');
-    }
+    final emailTrim = email.trim();
+    final passwordTrim = password.trim();
+    try {
+      final response = await _client.auth.signUp(
+        email: emailTrim,
+        password: passwordTrim,
+        data: {
+          'full_name': fullName,
+          'role': 'sales',
+        },
+      );
+      // ignore: avoid_print — requested signup diagnostics
+      print('Signup response: $response');
+      debugPrint('Signup response: $response');
 
-    await _client.from('profiles').upsert({
-      'id': authUser.id,
-      'full_name': fullName,
-      'email': authUser.email ?? email,
-      'role': 'sales',
-      'updated_at': DateTime.now().toIso8601String(),
-    });
-    return _readProfile(authUser);
+      final authUser = response.user;
+      if (authUser == null) {
+        throw SignupFailure('Unable to create account. Please try again.');
+      }
+
+      try {
+        await _client.from('profiles').upsert({
+          'id': authUser.id,
+          'full_name': fullName,
+          'email': authUser.email ?? emailTrim,
+          'role': 'sales',
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        debugPrint('[Signup profile upsert] deferred or failed (e.g. email confirm): $e');
+      }
+      return _readProfile(authUser);
+    } on AuthException catch (e) {
+      debugPrint('Signup auth error: ${e.message}');
+      throw SignupFailure(friendlySignupAuthMessage(e));
+    }
   }
 
   @override

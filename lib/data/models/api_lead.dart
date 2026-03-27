@@ -3,6 +3,7 @@ class ApiLead {
     required this.id,
     required this.name,
     required this.phone,
+    this.email = '',
     required this.status,
     required this.createdAt,
   });
@@ -10,6 +11,8 @@ class ApiLead {
   final String id;
   final String name;
   final String phone;
+  /// Contact email from API; empty if unknown.
+  final String email;
   final String status;
   final DateTime? createdAt;
 
@@ -17,6 +20,7 @@ class ApiLead {
     String? id,
     String? name,
     String? phone,
+    String? email,
     String? status,
     DateTime? createdAt,
   }) {
@@ -24,6 +28,7 @@ class ApiLead {
       id: id ?? this.id,
       name: name ?? this.name,
       phone: phone ?? this.phone,
+      email: email ?? this.email,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -35,6 +40,7 @@ class ApiLead {
       id: (map['id'] ?? '').toString(),
       name: (map['name'] ?? '').toString(),
       phone: (map['phone'] ?? '').toString(),
+      email: (map['email'] ?? '').toString(),
       status: (map['status'] ?? 'new').toString().toLowerCase(),
       createdAt: createdRaw == null ? null : DateTime.tryParse(createdRaw.toString()),
     );
@@ -44,6 +50,7 @@ class ApiLead {
     return <String, dynamic>{
       'name': name,
       'phone': phone,
+      if (email.isNotEmpty) 'email': email,
       'status': status,
     };
   }

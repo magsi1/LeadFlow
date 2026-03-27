@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../core/network/backend_api_client.dart';
 import '../../models/activity.dart';
 import '../../models/follow_up.dart';
@@ -40,12 +42,15 @@ class RemoteLeadRepository implements LeadRepository {
 
   @override
   Future<List<Lead>> fetchLeads() async {
-    final response = await _apiClient.get('/api/leads');
-    final leads = response['leads'];
-    if (leads is! List) return [];
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null || uid.isEmpty) return [];
+    final response = await _apiClient.get(
+      '/api/leads?user_id=${Uri.encodeQueryComponent(uid)}',
+    );
+    final leads = LeadflowApiEnvelope.expectDataList(response);
     return leads
-        .whereType<Map<String, dynamic>>()
-        .map(Lead.fromMap)
+        .whereType<Map>()
+        .map((e) => Lead.fromLeadflowBackendApiMap(Map<String, dynamic>.from(e)))
         .toList();
   }
 
@@ -58,8 +63,14 @@ class RemoteLeadRepository implements LeadRepository {
   Future<Lead> saveLead(Lead lead) async {
     final body = lead.toMap();
     final response = await _apiClient.post('/api/leads/upsert', body: body);
-    final map = response['lead'];
-    if (map is Map<String, dynamic>) return Lead.fromMap(map);
+    if (response['ok'] == true) {
+      final data = response['data'];
+      if (data is Map) {
+        return Lead.fromLeadflowBackendApiMap(Map<String, dynamic>.from(data));
+      }
+    }
+    final legacy = response['lead'];
+    if (legacy is Map<String, dynamic>) return Lead.fromMap(legacy);
     return lead;
   }
 

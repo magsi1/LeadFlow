@@ -19,6 +19,7 @@ class ApiService {
       Uri.parse('$baseUrl/api/leads?user_id=${user.id}'),
     );
 
+    // Same shape as axios: `response.data` = body, inner list = `response.data.data`
     final decoded = jsonDecode(res.body) as Map<String, dynamic>;
     if (decoded['ok'] != true) {
       throw Exception((decoded['error'] ?? 'Failed to fetch leads').toString());

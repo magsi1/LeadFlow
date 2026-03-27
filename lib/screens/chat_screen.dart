@@ -53,7 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Something went wrong';
+        _error = 'Error: ${e.toString()}';
         _isLoading = false;
       });
     }

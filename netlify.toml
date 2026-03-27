@@ -1,0 +1,12 @@
+# Netlify: Supabase keys must be passed at *compile* time into main.dart.js.
+# Set SUPABASE_URL and SUPABASE_ANON_KEY in Netlify → Site settings → Environment variables,
+# then use this build command so `flutter` receives them as --dart-define values.
+
+[build]
+  publish = "build/web"
+
+# Install Flutter in CI or use a custom Docker image; example assumes `flutter` is on PATH:
+# command = "curl -fsSL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.3-stable.tar.xz | tar -xJ && export PATH=\"$PWD/flutter/bin:$PATH\" && flutter pub get && flutter build web --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+
+# If you build locally and upload `build/web`, run:
+#   flutter build web --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY

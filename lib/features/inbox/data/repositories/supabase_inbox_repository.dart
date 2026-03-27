@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
+import '../../../../core/auth/supabase_auth_helpers.dart';
+import '../../../../data/repositories/supabase/supabase_leads_select.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/network/backend_api_client.dart';
 import '../../../../shared/models/channel_type.dart';
@@ -51,7 +53,16 @@ class SupabaseInboxRepository implements InboxRepository {
       return rows.map(_mapConversation).toList();
     }
 
-    final leadRows = await _client.from('leads').select().order('created_at', ascending: false).limit(200);
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return <Conversation>[];
+
+    logLeadsDbOp('select (inbox fallback from leads)');
+    final leadRows = await _client
+        .from('leads')
+        .select(SupabaseLeadsSelect.columns)
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(200);
     return leadRows.map(_mapLeadAsConversation).toList();
   }
 
@@ -180,10 +191,14 @@ class SupabaseInboxRepository implements InboxRepository {
       return;
     }
 
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    logLeadsDbOp('update (inbox lead status)', extra: {'leadId': leadId});
     await _client.from('leads').update({
       'status': normalized,
       'updated_at': DateTime.now().toIso8601String(),
-    }).eq('id', leadId);
+    }).eq('id', leadId).eq('user_id', userId);
   }
 
   Conversation _mapConversation(Map<String, dynamic> row) {
@@ -332,13 +347,16 @@ class SupabaseInboxRepository implements InboxRepository {
   Future<List<Conversation>> _fetchConversationsFromBackend() async {
     final api = _backendApiClient;
     if (api == null) return const [];
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return const [];
     try {
-      final response = await api.get('/api/leads');
-      final items = response['leads'];
-      if (items is! List) return const [];
+      final response = await api.get(
+        '/api/leads?user_id=${Uri.encodeQueryComponent(userId)}',
+      );
+      final items = LeadflowApiEnvelope.expectDataList(response);
       return items
-          .whereType<Map<String, dynamic>>()
-          .map(_mapLeadAsConversation)
+          .whereType<Map>()
+          .map((e) => _mapLeadAsConversation(Map<String, dynamic>.from(e)))
           .toList();
     } catch (_) {
       return const [];

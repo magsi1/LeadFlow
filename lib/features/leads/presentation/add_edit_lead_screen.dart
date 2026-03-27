@@ -36,6 +36,7 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
+  final _email = TextEditingController();
   final _alternate = TextEditingController();
   final _city = TextEditingController();
   final _address = TextEditingController();
@@ -71,6 +72,7 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
       if (lead != null) {
         _name.text = lead.customerName;
         _phone.text = lead.phone;
+        _email.text = lead.email;
         _alternate.text = lead.alternatePhone ?? '';
         _city.text = lead.city;
         _address.text = lead.address;
@@ -98,6 +100,7 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _email.dispose();
     _alternate.dispose();
     _city.dispose();
     _address.dispose();
@@ -130,6 +133,7 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
       businessId: user.businessId,
       customerName: _name.text.trim(),
       phone: _phone.text.trim(),
+      email: _email.text.trim(),
       alternatePhone: _alternate.text.trim().isEmpty ? null : _alternate.text.trim(),
       city: _city.text.trim(),
       address: _address.text.trim(),
@@ -195,6 +199,18 @@ class _AddEditLeadScreenState extends ConsumerState<AddEditLeadScreen> {
                   label: 'Phone number',
                   keyboardType: TextInputType.phone,
                   validator: (v) => (v == null || v.isEmpty) ? 'Phone is required' : null,
+                ),
+                const SizedBox(height: 10),
+                AppTextField(
+                  controller: _email,
+                  label: 'Email',
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    final t = v?.trim() ?? '';
+                    if (t.isEmpty) return null;
+                    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t);
+                    return ok ? null : 'Enter a valid email';
+                  },
                 ),
                 const SizedBox(height: 10),
                 AppTextField(controller: _alternate, label: 'Alternate phone', keyboardType: TextInputType.phone),

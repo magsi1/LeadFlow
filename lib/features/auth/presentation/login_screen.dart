@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_paths.dart';
+import '../../../core/utils/email_validation.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../app_state/providers.dart';
 
@@ -64,7 +65,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     controller: _email,
                     label: 'Email',
                     keyboardType: TextInputType.emailAddress,
-                    validator: (v) => (v == null || v.isEmpty) ? 'Email is required' : null,
+                    validator: (v) {
+                      final s = (v ?? '').trim();
+                      if (s.isEmpty) return 'Email is required';
+                      if (!isValidEmail(s)) return 'Please enter a valid email';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 12),
                   AppTextField(
