@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express'
 
 import { supabase } from '../lib/supabaseAdmin.js'
-import { maybeSuggestLlmIntent, scoreLeadMessage } from '../services/leadScoringService.js'
+import { generateAiSalesReply, getFallbackReply } from '../services/aiReplyService.js'
+import { classifyLeadIntent } from '../services/leadScoringService.js'
+import { notifyN8nLeadTemperatureAutomation } from '../services/n8nLeadTemperatureService.js'
 import { sendWhatsAppReply } from '../services/whatsappReplyService.js'
 
 const WHATSAPP_VERIFY_TOKEN = 'leadflow123'
@@ -80,33 +82,144 @@ export async function handleWhatsAppWebhook(req: Request, res: Response): Promis
     console.log('Incoming message:', cleanPhone, cleanMessage)
     const normalizedName = name?.trim() ?? ''
 
-    const scoring = scoreLeadMessage(cleanMessage)
-    const llmSuggestion = await maybeSuggestLlmIntent(cleanMessage)
-    const { error } = await supabase.from('leads').insert({
-      name: normalizedName.length > 0 ? normalizedName : 'Unknown',
-      phone: cleanPhone,
-      source: 'WHATSAPP',
-      message: cleanMessage,
-      intent: 'HOT',
-      status: 'new',
-      score: scoring.score,
-      score_category: scoring.category,
-      deal_status: 'open',
-      deal_value: 0,
-      notes: llmSuggestion ? `LLM intent hint: ${llmSuggestion}` : undefined,
-    })
+    const requestedUserId =
+      data['user_id']?.toString()?.trim() ??
+      data['userId']?.toString()?.trim() ??
+      undefined
 
-    if (error) {
-      console.error('Failed to save incoming lead:', error.message)
-      res.status(500).json({ success: false, error: error.message })
+    const { data: existingLead, error: existingLeadError } = await supabase
+      .from('leads')
+      .select('id, user_id, auto_reply')
+      .eq('phone', cleanPhone)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingLeadError != null) {
+      console.error('Failed to query lead by phone:', existingLeadError.message)
+      res.status(500).json({ success: false, error: existingLeadError.message })
       return
     }
 
-    await sendWhatsAppReply(cleanPhone, 'Thanks for contacting LeadFlow. We will respond shortly.')
+    let leadId = existingLead?.id?.toString() ?? ''
+    let userId = existingLead?.user_id?.toString() ?? ''
+    let autoReplyEnabled = existingLead?.auto_reply == null ? true : Boolean(existingLead?.auto_reply)
 
-    console.log('Real WhatsApp lead received:', normalizedName.length > 0 ? normalizedName : 'Unknown', cleanPhone)
-    console.log('Incoming lead saved')
-    res.sendStatus(200)
+    if ((leadId.length === 0 || userId.length === 0) && (requestedUserId == null || requestedUserId.length === 0)) {
+      console.warn('Incoming WhatsApp message has no matching lead and no user_id provided; skipped')
+      res.status(200).json({ success: true, ignored: true, reason: 'lead_not_found' })
+      return
+    }
+
+    const classification = await classifyLeadIntent(cleanMessage)
+    console.log('[whatsapp] lead intent', {
+      phone: cleanPhone,
+      status: classification.status,
+      reason: classification.reason,
+    })
+
+    if (leadId.length === 0 || userId.length === 0) {
+      const { data: createdLead, error: createLeadError } = await supabase
+        .from('leads')
+        .insert({
+          user_id: requestedUserId,
+          assigned_to: requestedUserId,
+          name: normalizedName.length > 0 ? normalizedName : 'Unknown',
+          phone: cleanPhone,
+          message: cleanMessage,
+          status: classification.dbStatus,
+          score: classification.suggestedScore,
+          stage: 'new',
+          priority: 'new',
+          auto_reply: true,
+        })
+        .select('id, user_id, auto_reply')
+        .single()
+
+      if (createLeadError != null || createdLead == null) {
+        console.error('Failed to create lead for inbound message:', createLeadError?.message)
+        res.status(500).json({ success: false, error: createLeadError?.message ?? 'create_lead_failed' })
+        return
+      }
+
+      leadId = createdLead.id?.toString() ?? ''
+      userId = createdLead.user_id?.toString() ?? ''
+      autoReplyEnabled = createdLead.auto_reply == null ? true : Boolean(createdLead.auto_reply)
+    } else {
+      const { error: leadUpdateError } = await supabase
+        .from('leads')
+        .update({
+          message: cleanMessage,
+          status: classification.dbStatus,
+          score: classification.suggestedScore,
+        })
+        .eq('id', leadId)
+
+      if (leadUpdateError != null) {
+        console.error('Failed to update lead intent:', leadUpdateError.message)
+      }
+    }
+
+    notifyN8nLeadTemperatureAutomation({
+      phone: cleanPhone.replace(/\D/g, ''),
+      name: normalizedName.length > 0 ? normalizedName : 'Unknown',
+      lead_id: leadId,
+      user_id: userId,
+      status: classification.status,
+      message: cleanMessage,
+      reason: classification.reason,
+    })
+
+    const { error: inboundError } = await supabase.from('messages').insert({
+      user_id: userId,
+      lead_id: leadId,
+      phone: cleanPhone,
+      message: cleanMessage,
+      is_from_customer: true,
+    })
+
+    if (inboundError != null) {
+      console.error('Failed to save inbound message:', inboundError.message)
+      res.status(500).json({ success: false, error: inboundError.message })
+      return
+    }
+
+    if (!autoReplyEnabled) {
+      res.status(200).json({
+        success: true,
+        auto_reply: false,
+        status: classification.status,
+        reason: classification.reason,
+      })
+      return
+    }
+
+    let reply = getFallbackReply()
+    try {
+      reply = await generateAiSalesReply(cleanMessage)
+    } catch (aiError) {
+      console.error('AI reply failed; using fallback:', aiError)
+    }
+
+    await sendWhatsAppReply(cleanPhone, reply)
+
+    const { error: outboundError } = await supabase.from('messages').insert({
+      user_id: userId,
+      lead_id: leadId,
+      phone: cleanPhone,
+      message: reply,
+      is_from_customer: false,
+    })
+
+    if (outboundError != null) {
+      console.error('Failed to save outbound message:', outboundError.message)
+    }
+
+    res.status(200).json({
+      success: true,
+      status: classification.status,
+      reason: classification.reason,
+    })
   } catch (err) {
     console.error('Webhook handler error:', err)
     res.status(500).json({

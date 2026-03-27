@@ -1,4 +1,8 @@
 class AppConfig {
+  /// Production LeadFlow API (Railway). Override with --dart-define=LEADFLOW_BACKEND_BASE_URL=...
+  static const String apiUrl =
+      'https://leadflow-production-b016.up.railway.app';
+
   static const appEnv = String.fromEnvironment(
     'APP_ENV',
     defaultValue: 'supabase',
@@ -7,17 +11,10 @@ class AppConfig {
     'LEADFLOW_ENV',
     defaultValue: 'supabase',
   );
-  static const supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: '',
-  );
-  static const supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: '',
-  );
+
   static const backendBaseUrl = String.fromEnvironment(
     'LEADFLOW_BACKEND_BASE_URL',
-    defaultValue: 'https://api.leadflow.local',
+    defaultValue: apiUrl,
   );
   static const authToken = String.fromEnvironment(
     'LEADFLOW_AUTH_TOKEN',
@@ -36,21 +33,38 @@ class AppConfig {
     defaultValue: '',
   );
 
+  /// Full HTTPS URL for WhatsApp Cloud API / 360dialog `POST` (messages endpoint).
+  /// Example: `https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages`
+  static const whatsappApiUrl = String.fromEnvironment(
+    'WHATSAPP_API_URL',
+    defaultValue: '',
+  );
+
+  /// Prefer `WHATSAPP_API_TOKEN`; falls back to [whatsappAccessToken] if empty.
+  static const whatsappApiToken = String.fromEnvironment(
+    'WHATSAPP_API_TOKEN',
+    defaultValue: '',
+  );
+
+  /// Legacy name (e.g. from `.env.example`); used when [whatsappApiToken] is empty.
+  static const whatsappAccessToken = String.fromEnvironment(
+    'WHATSAPP_ACCESS_TOKEN',
+    defaultValue: '',
+  );
+
+  /// Set `true` for Meta WhatsApp Cloud API if the server requires `messaging_product: "whatsapp"` in JSON.
+  static const bool whatsappMetaMessagingProduct = bool.fromEnvironment(
+    'WHATSAPP_META_BODY',
+    defaultValue: false,
+  );
+
+  /// Set `true` to send `D360-API-KEY: <token>` instead of `Authorization: Bearer <token>`.
+  static const bool whatsappD360ApiKeyHeader = bool.fromEnvironment(
+    'WHATSAPP_D360_API_KEY',
+    defaultValue: false,
+  );
+
   static const bool demoModeEnabled = false;
 
   static const aiModeEnabled = false;
-
-  static bool get isSupabaseConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
-  static bool get isSupabaseUrlValid => supabaseUrl.startsWith('https://') && supabaseUrl.contains('.supabase.co');
-
-  static bool get wantsSupabase {
-    final env = appEnv.toLowerCase();
-    final legacyEnv = environmentName.toLowerCase();
-    return env == 'supabase' || legacyEnv == 'supabase';
-  }
-
-  static bool get useSupabase {
-    if (demoModeEnabled) return false;
-    return isSupabaseConfigured && wantsSupabase;
-  }
 }

@@ -38,6 +38,7 @@ class LeadCaptureService {
       businessId: currentUser.businessId,
       customerName: conversation.customerName,
       phone: conversation.customerPhone ?? 'N/A',
+      email: '',
       city: 'Karachi',
       address: 'Captured from ${conversation.channel.label}',
       source: conversation.channel.label,
@@ -50,7 +51,12 @@ class LeadCaptureService {
       createdBy: currentUser.id,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      lastContacted: null,
       notesSummary: 'Created from unified inbox conversation.',
+      score: conversation.intent == BuyingIntent.high ? 70 : 50,
+      scoreCategory: conversation.intent == BuyingIntent.high
+          ? LeadScoreCategory.hot
+          : LeadScoreCategory.warm,
       sourceMetadata: {
         'channel': conversation.channel.name,
         'externalUserId': conversation.externalUserId,

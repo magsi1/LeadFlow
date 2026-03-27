@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express'
+import { Router, type NextFunction, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
 
 import { supabase } from '../lib/supabaseAdmin.js'
@@ -31,6 +31,31 @@ function sendSuccess(res: Response, status: number, data: unknown): void {
   res.status(status).json({ ok: true, data })
 }
 
+function resolveUserId(req: Request): string {
+  const body = (req.body as { user_id?: unknown; userId?: unknown } | undefined) ?? {}
+  return (
+    cleanString(req.header('x-user-id')) ||
+    cleanString(req.query.user_id) ||
+    cleanString(req.query.userId) ||
+    cleanString(body.user_id) ||
+    cleanString(body.userId)
+  )
+}
+
+function requireUserId(req: Request, res: Response, next: NextFunction): void {
+  const userId = resolveUserId(req)
+  if (userId.length === 0) {
+    sendError(res, 400, 'user_id_required')
+    return
+  }
+  res.locals.userId = userId
+  next()
+}
+
+function getRequiredUserId(res: Response): string {
+  return (res.locals.userId as string) ?? ''
+}
+
 function validateNamePhoneStatus(name: string, phone: string, status: string | undefined): string | null {
   if (name.length === 0) return 'name_required'
   if (phone.length === 0) return 'phone_required'
@@ -38,7 +63,11 @@ function validateNamePhoneStatus(name: string, phone: string, status: string | u
   return null
 }
 
+leadsRouter.use(requireUserId)
+
 leadsRouter.get('/', async (req, res) => {
+  const userId = getRequiredUserId(res)
+
   const status = cleanString(req.query.status).toLowerCase()
   const search = cleanString(req.query.search)
   const page = parsePositiveInt(req.query.page, 1)
@@ -49,6 +78,7 @@ leadsRouter.get('/', async (req, res) => {
   let query = supabase
     .from('leads')
     .select('*')
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -75,6 +105,8 @@ leadsRouter.get('/', async (req, res) => {
 })
 
 leadsRouter.post('/', async (req, res) => {
+  const userId = getRequiredUserId(res)
+
   const body = (req.body as { name?: unknown; phone?: unknown; status?: unknown } | undefined) ?? {}
   const name = cleanString(body.name)
   const phone = cleanString(body.phone)
@@ -89,6 +121,7 @@ leadsRouter.post('/', async (req, res) => {
 
   const payload = {
     id: randomUUID(),
+    user_id: userId,
     name,
     phone,
     status,
@@ -106,6 +139,7 @@ leadsRouter.post('/', async (req, res) => {
 
 leadsRouter.put('/:id', async (req, res) => {
   const id = cleanString(req.params.id)
+  const userId = getRequiredUserId(res)
   if (id.length === 0) {
     sendError(res, 400, 'lead_id_required')
     return
@@ -150,6 +184,7 @@ leadsRouter.put('/:id', async (req, res) => {
     .from('leads')
     .update(patch)
     .eq('id', id)
+    .eq('user_id', userId)
     .select('*')
     .single()
 
@@ -163,6 +198,7 @@ leadsRouter.put('/:id', async (req, res) => {
 
 leadsRouter.delete('/:id', async (req, res) => {
   const id = cleanString(req.params.id)
+  const userId = getRequiredUserId(res)
   if (id.length === 0) {
     sendError(res, 400, 'lead_id_required')
     return
@@ -172,6 +208,7 @@ leadsRouter.delete('/:id', async (req, res) => {
     .from('leads')
     .delete()
     .eq('id', id)
+    .eq('user_id', userId)
     .select('id')
     .single()
 
@@ -183,59 +220,10 @@ leadsRouter.delete('/:id', async (req, res) => {
   sendSuccess(res, 200, { deleted: true, id: data?.id ?? id })
 })
 
-leadsRouter.post('/:id/notes', async (req, res) => {
-  const leadId = cleanString(req.params.id)
-  const note = cleanString((req.body as { note?: unknown } | undefined)?.note)
-
-  if (leadId.length === 0) {
-    sendError(res, 400, 'lead_id_required')
-    return
-  }
-  if (note.length === 0) {
-    sendError(res, 400, 'note_required')
-    return
-  }
-
-  const payload = {
-    id: randomUUID(),
-    lead_id: leadId,
-    note,
-    created_at: new Date().toISOString(),
-  }
-
-  const { data, error } = await supabase.from('lead_notes').insert([payload]).select('*').single()
-  if (error) {
-    sendError(res, 500, `create_note_failed:${error.message}`)
-    return
-  }
-
-  sendSuccess(res, 201, data)
-})
-
-leadsRouter.get('/:id/notes', async (req, res) => {
-  const leadId = cleanString(req.params.id)
-  if (leadId.length === 0) {
-    sendError(res, 400, 'lead_id_required')
-    return
-  }
-
-  const { data, error } = await supabase
-    .from('lead_notes')
-    .select('*')
-    .eq('lead_id', leadId)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    sendError(res, 500, `fetch_notes_failed:${error.message}`)
-    return
-  }
-
-  sendSuccess(res, 200, data ?? [])
-})
-
 // Compatibility routes used by existing clients.
 leadsRouter.patch('/:id/status', async (req, res) => {
   const id = cleanString(req.params.id)
+  const userId = getRequiredUserId(res)
   const status = cleanString((req.body as { status?: string } | undefined)?.status).toLowerCase()
 
   if (id.length === 0) {
@@ -251,6 +239,7 @@ leadsRouter.patch('/:id/status', async (req, res) => {
     .from('leads')
     .update({ status })
     .eq('id', id)
+    .eq('user_id', userId)
     .select('*')
     .single()
 
@@ -264,6 +253,7 @@ leadsRouter.patch('/:id/status', async (req, res) => {
 
 leadsRouter.patch('/:id/assign', async (req, res) => {
   const id = cleanString(req.params.id)
+  const userId = getRequiredUserId(res)
   const assignedTo =
     cleanString((req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assigned_to) ||
     cleanString((req.body as { assigned_to?: string; assignedTo?: string } | undefined)?.assignedTo)
@@ -281,6 +271,7 @@ leadsRouter.patch('/:id/assign', async (req, res) => {
     .from('leads')
     .update({ assigned_to: assignedTo })
     .eq('id', id)
+    .eq('user_id', userId)
     .select('*')
     .single()
 
@@ -294,6 +285,7 @@ leadsRouter.patch('/:id/assign', async (req, res) => {
 
 leadsRouter.patch('/:id/deal', async (req, res) => {
   const id = cleanString(req.params.id)
+  const userId = getRequiredUserId(res)
   const body =
     (req.body as { deal_value?: number; dealValue?: number; deal_status?: string; dealStatus?: string } | undefined) ??
     {}
@@ -304,7 +296,6 @@ leadsRouter.patch('/:id/deal', async (req, res) => {
     sendError(res, 400, 'lead_id_required')
     return
   }
-
   const patch: Record<string, unknown> = {}
   if (dealValueRaw != null) patch.deal_value = Number(dealValueRaw) || 0
   if (dealStatusRaw.length > 0) patch.deal_status = dealStatusRaw
@@ -317,6 +308,7 @@ leadsRouter.patch('/:id/deal', async (req, res) => {
     .from('leads')
     .update(patch)
     .eq('id', id)
+    .eq('user_id', userId)
     .select('*')
     .single()
 
@@ -327,3 +319,4 @@ leadsRouter.patch('/:id/deal', async (req, res) => {
 
   sendSuccess(res, 200, data)
 })
+

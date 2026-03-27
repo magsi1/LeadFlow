@@ -13,6 +13,11 @@ export const env = {
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? '',
   instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN ?? '',
   facebookPageAccessToken: process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? '',
+  metaLeadAccessToken:
+    process.env.META_LEAD_ACCESS_TOKEN ??
+    process.env.FACEBOOK_PAGE_ACCESS_TOKEN ??
+    '',
   metaWebhookVerifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN ?? '',
   metaAppSecret: process.env.META_APP_SECRET ?? '',
+  metaLeadDefaultUserId: process.env.META_LEAD_DEFAULT_USER_ID ?? '',
 };

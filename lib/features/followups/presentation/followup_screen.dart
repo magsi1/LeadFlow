@@ -71,7 +71,12 @@ class FollowUpScreen extends ConsumerWidget {
             state.team.where((u) => u.id == f.assignedTo).firstOrNull?.fullName ?? fallbackStaff;
         return Card(
           child: ListTile(
-            title: Text(lead.customerName),
+            title: Text(
+              lead.customerName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
             subtitle: Text('${lead.phone}\n$staff • ${lead.status.name}\nDue: ${Formatters.dateTime(f.dueAt)}'),
             isThreeLine: true,
             trailing: isCompletedTab

@@ -4,6 +4,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/supabase_auth_helpers.dart';
+import '../../../data/repositories/supabase/supabase_leads_select.dart';
+import '../../../services/lead_service.dart';
+
 enum FilterType { today, week, month }
 
 class AnalyticsDashboardScreen extends StatelessWidget {
@@ -101,7 +105,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           break;
       }
 
-      final raw = await supabase.from('leads').select().gte('created_at', startDate.toUtc().toIso8601String());
+      final userId = supabase.auth.currentUser?.id;
+      logLeadsDbOp('select (analytics)', extra: {
+        'filter': selectedFilter.name,
+      });
+      if (userId == null) {
+        logLeadsDbOp('select (analytics skipped: no auth user)');
+        totalLeads = 0;
+        hotLeads = 0;
+        wonLeads = 0;
+        followUps = 0;
+        totalRevenue = 0;
+        conversionRate = 0;
+        statusCount = {'new': 0, 'contacted': 0, 'closed': 0};
+        dailyLeads = [0, 0, 0, 0, 0];
+        return;
+      }
+
+      await LeadService.claimUnassignedLeadsForCurrentUser();
+      final raw = await supabase
+          .from('leads')
+          .select(SupabaseLeadsSelect.columns)
+          .eq('assigned_to', userId)
+          .gte('created_at', startDate.toUtc().toIso8601String());
       final leads = List<Map<String, dynamic>>.from(raw);
 
       totalLeads = leads.length;

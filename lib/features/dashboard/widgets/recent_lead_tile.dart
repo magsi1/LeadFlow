@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/lead_temperature_style.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/lead.dart';
 import '../../leads/widgets/lead_status_chip.dart';
@@ -17,11 +18,7 @@ class RecentLeadTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   Color _temperatureColor() {
-    return switch (lead.temperature) {
-      LeadTemperature.hot => Colors.redAccent,
-      LeadTemperature.warm => Colors.orange,
-      LeadTemperature.cold => Colors.blueGrey,
-    };
+    return colorForLeadTemperature(lead.temperature);
   }
 
   (String, Color) _statusView() {

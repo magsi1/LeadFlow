@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/lead_temperature_style.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/lead.dart';
 import 'lead_status_chip.dart';
@@ -35,11 +37,25 @@ class LeadMobileCard extends StatelessWidget {
   }
 
   Color _tempColor() {
-    return switch (lead.temperature) {
-      LeadTemperature.hot => Colors.redAccent,
-      LeadTemperature.warm => Colors.orange,
-      LeadTemperature.cold => Colors.blueGrey,
-    };
+    return colorForLeadTemperature(lead.temperature);
+  }
+
+  String get _emailLabel {
+    final e = lead.email.trim();
+    return e.isEmpty ? 'No Email' : e;
+  }
+
+  bool get _canMailto {
+    final e = lead.email.trim();
+    return e.isNotEmpty && e.contains('@');
+  }
+
+  Future<void> _openMailto() async {
+    if (!_canMailto) return;
+    final uri = Uri.parse('mailto:${lead.email.trim()}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
   }
 
   @override
@@ -59,7 +75,24 @@ class LeadMobileCard extends StatelessWidget {
                     children: [
                       Text(
                         lead.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: _canMailto ? _openMailto : null,
+                        child: Text(
+                          _emailLabel,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: _canMailto ? Theme.of(context).colorScheme.primary : Colors.grey.shade700,
+                                decoration: _canMailto ? TextDecoration.underline : null,
+                              ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text('${lead.phone} • ${lead.city}'),

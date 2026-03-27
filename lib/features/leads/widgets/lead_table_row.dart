@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/lead_temperature_style.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/lead.dart';
 import 'lead_status_chip.dart';
@@ -37,11 +38,7 @@ class LeadTableRow extends StatelessWidget {
   }
 
   Color _tempColor() {
-    return switch (lead.temperature) {
-      LeadTemperature.hot => Colors.redAccent,
-      LeadTemperature.warm => Colors.orange,
-      LeadTemperature.cold => Colors.blueGrey,
-    };
+    return colorForLeadTemperature(lead.temperature);
   }
 
   @override
@@ -65,6 +62,12 @@ class LeadTableRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(lead.phone, style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    lead.email.trim().isEmpty ? 'No Email' : lead.email.trim(),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                  ),
                 ],
               ),
             ),

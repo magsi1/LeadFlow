@@ -2,6 +2,10 @@ import express, { type Request } from 'express';
 import cors from 'cors';
 
 import { analyticsRouter } from './routes/analytics.js';
+import {
+  handleMetaWebhook,
+  verifyMetaWebhook,
+} from './controllers/metaWebhookController.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { leadsRouter } from './routes/leads.js';
 import { messagesRouter } from './routes/messages.js';
@@ -30,7 +34,7 @@ export function buildApp() {
     cors({
       origin: '*',
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
     }),
   );
 
@@ -42,6 +46,10 @@ export function buildApp() {
     res.status(200).json({ status: 'ok' });
   });
 
+  // Meta Lead Ads webhook shortcut path (in addition to /webhooks/meta).
+  app.get('/meta-webhook', verifyMetaWebhook);
+  app.post('/meta-webhook', handleMetaWebhook);
+
   app.get('/', (_req, res) => {
     res.status(200).send('API is running');
   });
@@ -49,6 +57,7 @@ export function buildApp() {
   app.use('/analytics', analyticsRouter);
   app.use('/webhooks', webhooksRouter);
   app.use('/webhook', webhooksRouter);
+  // Same leads router: clients may use `/leads` or `/api/leads` (no behavior difference).
   app.use('/api/leads', leadsRouter);
   app.use('/leads', leadsRouter);
   app.use('/api/integrations', integrationsRouter);

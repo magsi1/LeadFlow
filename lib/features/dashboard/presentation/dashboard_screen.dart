@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/network/backend_providers.dart';
 import '../../../core/utils/iterable_extensions.dart';
 import '../../../core/router/route_paths.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../data/models/app_user.dart';
 import '../../../data/models/follow_up.dart';
 import '../../../data/models/lead.dart';
 import '../../analytics/presentation/providers.dart';
@@ -41,12 +43,15 @@ class DashboardScreen extends ConsumerWidget {
     final state = ref.watch(appStateProvider);
     final analyticsAsync = ref.watch(analyticsSnapshotProvider);
     final summaryAsync = ref.watch(dashboardSummaryProvider);
-    final user = state.currentUser;
-    if (user == null) {
+    final appUser = state.currentUser;
+    if (appUser == null) {
       return const EmptyState(title: 'No session', subtitle: 'Please login to continue.');
     }
 
-    final myLeads = state.leads.where((e) => e.assignedTo == user.id).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final user = Supabase.instance.client.auth.currentUser;
+    final email = user?.email ?? 'No Email';
+
+    final myLeads = state.leads.where((e) => e.assignedTo == appUser.id).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final viewLeads = (state.isAdmin ? state.leads : myLeads)..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final now = DateTime.now();
     final summary = summaryAsync.valueOrNull;
@@ -79,7 +84,7 @@ class DashboardScreen extends ConsumerWidget {
           return ListView(
             padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 16, vertical: 16),
             children: [
-              _header(context, ref, user.fullName, isDesktop),
+              _header(context, ref, appUser, isDesktop, email),
               const SizedBox(height: 14),
               GridView.count(
                 crossAxisCount: statsCrossAxis,
@@ -223,63 +228,114 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, WidgetRef ref, String fullName, bool isDesktop) {
+  Widget _header(BuildContext context, WidgetRef ref, AppUser appUser, bool isDesktop, String email) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                const Flexible(
+                  flex: 2,
+                  child: Text(
+                    'LeadFlow Dashboard',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  flex: 3,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Text('Dashboard', style: Theme.of(context).textTheme.headlineSmall),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Welcome back, $fullName',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
+                      Flexible(
+                        child: Text(
+                          email,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      PopupMenuButton<String>(
+                        tooltip: 'Account',
+                        icon: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                          child: Icon(
+                            Icons.person,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                        onSelected: (value) async {
+                          if (value == 'logout') {
+                            await ref.read(appStateProvider.notifier).signOut();
+                            if (context.mounted) context.go(RoutePaths.login);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem<String>(
+                            value: 'logout',
+                            child: Row(
+                              children: [
+                                Icon(Icons.logout),
+                                SizedBox(width: 10),
+                                Text('Logout'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: () => context.push(RoutePaths.addLead),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Lead'),
                       ),
                     ],
                   ),
                 ),
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
-                  child: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
-                ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Welcome back, ${appUser.fullName}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
+              ),
             ),
             if (isDesktop) ...[
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (value) {
-                        final filters = ref.read(appStateProvider).filters;
-                        ref.read(appStateProvider.notifier).updateFilters(filters.copyWith(search: value.trim()));
-                      },
-                      onSubmitted: (value) => _applySearch(context, ref, value),
-                      decoration: InputDecoration(
-                        hintText: 'Search leads, city, phone, source...',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: IconButton(
-                          tooltip: 'Search in leads',
-                          onPressed: () => _applySearch(context, ref, ref.read(appStateProvider).filters.search),
-                          icon: const Icon(Icons.arrow_forward_rounded),
-                        ),
-                      ),
-                    ),
+              TextField(
+                onChanged: (value) {
+                  final filters = ref.read(appStateProvider).filters;
+                  ref.read(appStateProvider.notifier).updateFilters(filters.copyWith(search: value.trim()));
+                },
+                onSubmitted: (value) => _applySearch(context, ref, value),
+                decoration: InputDecoration(
+                  hintText: 'Search leads, city, phone, source...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    tooltip: 'Search in leads',
+                    onPressed: () => _applySearch(context, ref, ref.read(appStateProvider).filters.search),
+                    icon: const Icon(Icons.arrow_forward_rounded),
                   ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: () => context.push(RoutePaths.addLead),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Lead'),
-                  ),
-                ],
+                ),
               ),
             ],
           ],
@@ -362,6 +418,7 @@ class DashboardScreen extends ConsumerWidget {
                     businessId: '',
                     customerName: 'Unknown Lead',
                     phone: '-',
+                    email: '',
                     city: '-',
                     address: '-',
                     source: 'Other',
@@ -382,7 +439,12 @@ class DashboardScreen extends ConsumerWidget {
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                   leading: const Icon(Icons.schedule_rounded, size: 18),
-                  title: Text(lead.customerName),
+                  title: Text(
+                    lead.customerName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                   subtitle: Text('${lead.phone} • ${lead.city}'),
                   trailing: Text(
                     '${f.dueAt.hour.toString().padLeft(2, '0')}:${f.dueAt.minute.toString().padLeft(2, '0')}',

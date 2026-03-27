@@ -7,10 +7,12 @@ import { verifyMetaSignature } from '../utils/verifyMetaSignature.js';
 import { ConversationIngestionService } from '../services/conversationIngestionService.js';
 import { MessageStatusService } from '../services/messageStatusService.js';
 import { MetaWebhookService } from '../services/metaWebhookService.js';
+import { MetaLeadgenIngestionService } from '../services/metaLeadgenIngestionService.js';
 
 const metaWebhookService = new MetaWebhookService();
 const ingestionService = new ConversationIngestionService();
 const messageStatusService = new MessageStatusService();
+const metaLeadgenIngestionService = new MetaLeadgenIngestionService();
 
 export function verifyMetaWebhook(req: Request, res: Response): void {
   const mode = req.query['hub.mode'];
@@ -31,6 +33,10 @@ export function verifyMetaWebhook(req: Request, res: Response): void {
   res.sendStatus(403);
 }
 
+/**
+ * Meta Graph webhooks (Lead Ads `leadgen`, messaging, etc.).
+ * Security: HMAC `X-Hub-Signature-256` vs raw body (`META_APP_SECRET`); required in production.
+ */
 export async function handleMetaWebhook(req: Request, res: Response): Promise<void> {
   const signature = req.header('x-hub-signature-256');
   const isValid = verifyMetaSignature(
@@ -40,13 +46,24 @@ export async function handleMetaWebhook(req: Request, res: Response): Promise<vo
   );
 
   if (!isValid) {
-    logger.warn('Meta webhook rejected due to invalid signature');
+    logger.warn('Meta webhook rejected due to invalid or missing signature');
     res.sendStatus(401);
     return;
   }
 
   const payload = (req.body as MetaWebhookPayload) ?? {};
   const object = payload.object ?? 'unknown';
+  const leadgenIds: Array<{ leadgenId: string; source: string }> = [];
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== 'leadgen') continue;
+      const value = (change.value as Record<string, unknown>) ?? {};
+      const leadgenId = String(value.leadgen_id ?? '').trim();
+      if (!leadgenId) continue;
+      const rawSource = String(value.platform ?? payload.object ?? 'facebook');
+      leadgenIds.push({ leadgenId, source: rawSource });
+    }
+  }
   const inboundEvents = metaWebhookService.extractInboundEvents(payload);
   const statusEvents = metaWebhookService.extractStatusEvents(payload);
 
@@ -55,7 +72,22 @@ export async function handleMetaWebhook(req: Request, res: Response): Promise<vo
     accepted: inboundEvents.length + statusEvents.length,
     inbound: inboundEvents.length,
     statuses: statusEvents.length,
+    leadgen: leadgenIds.length,
   });
+
+  for (const leadgen of leadgenIds) {
+    try {
+      await metaLeadgenIngestionService.ingestLeadgen({
+        leadgenId: leadgen.leadgenId,
+        source: leadgen.source,
+      });
+    } catch (error) {
+      logger.error('Meta leadgen ingestion failed', {
+        leadgen_id: leadgen.leadgenId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   for (const event of inboundEvents) {
     try {
@@ -82,7 +114,7 @@ export async function handleMetaWebhook(req: Request, res: Response): Promise<vo
     }
   }
 
-  if (inboundEvents.length === 0 && statusEvents.length === 0) {
+  if (inboundEvents.length === 0 && statusEvents.length === 0 && leadgenIds.length === 0) {
     logger.debug('Meta webhook received no parsable events', { object });
   }
 }

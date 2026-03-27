@@ -1,100 +1,136 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/lead.dart';
 
+const baseUrl = 'https://leadflow-production-7103.up.railway.app';
+
 class ApiService {
-  static const String _baseUrl =
-      'https://leadflow-production-7103.up.railway.app';
+  static Future<List<dynamic>> fetchLeads() async {
+    final user = Supabase.instance.client.auth.currentUser;
 
-  Future<List<Lead>> fetchLeads() async {
-    final url = Uri.parse('$_baseUrl/api/leads');
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
 
-    final response = await http.get(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+    final res = await http.get(
+      Uri.parse('$baseUrl/api/leads?user_id=${user.id}'),
     );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final payload = data['data'];
-      if (payload is! List) {
-        return <Lead>[];
-      }
-      return payload
-        .whereType<Map>()
-        .map((item) => Lead.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
-    } else {
-      throw Exception('Failed to load leads: ${response.body}');
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    if (decoded['ok'] != true) {
+      throw Exception((decoded['error'] ?? 'Failed to fetch leads').toString());
+    }
+
+    final payload = decoded['data'];
+    if (payload is! List) return <dynamic>[];
+    return payload;
+  }
+
+  static Future<void> updateStatus(String id, String status) async {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    final res = await http.put(
+      Uri.parse('$baseUrl/api/leads/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'status': status,
+        'user_id': user.id,
+      }),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to update status');
     }
   }
 
-  Future<void> updateLeadStatus(String id, String status) async {
-    final response = await http.patch(
-      Uri.parse('$_baseUrl/api/leads/$id/status'),
-      headers: const <String, String>{'Content-Type': 'application/json'},
-      body: jsonEncode(<String, dynamic>{'status': status}),
-    );
+  static Future<void> createLead(String name, String phone, {String status = 'new'}) async {
+    final user = Supabase.instance.client.auth.currentUser;
 
-    final json = _decodeJson(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        _extractError(json, fallback: 'Failed to update lead status'),
-      );
+    if (user == null) {
+      throw Exception('User not logged in');
     }
 
-    if (json['ok'] != true) {
-      throw Exception(
-        _extractError(json, fallback: 'Failed to update lead status'),
-      );
-    }
-  }
-
-  Future<void> createLead(String name, String phone) async {
-    final response = await http.post(
-      Uri.parse('$_baseUrl/api/leads'),
-      headers: const <String, String>{'Content-Type': 'application/json'},
-      body: jsonEncode(<String, dynamic>{
+    final res = await http.post(
+      Uri.parse('$baseUrl/api/leads'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
         'name': name,
         'phone': phone,
-        'status': 'new',
+        'status': status,
+        'message': 'New Lead',
+        'user_id': user.id,
+      }),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to create lead');
+    }
+  }
+
+  static Future<void> updateLead({
+    required String id,
+    required String name,
+    required String phone,
+    required String status,
+  }) async {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    final res = await http.put(
+      Uri.parse('$baseUrl/api/leads/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'phone': phone,
+        'status': status,
+        'user_id': user.id,
       }),
     );
 
-    final json = _decodeJson(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(_extractError(json, fallback: 'Failed to create lead'));
-    }
-
-    if (json['ok'] != true) {
-      throw Exception(_extractError(json, fallback: 'Failed to create lead'));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to update lead');
     }
   }
 
-  Map<String, dynamic> _decodeJson(http.Response response) {
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        return decoded;
-      }
-    } catch (_) {
-      // no-op
+  static Future<void> deleteLead(String id) async {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('User not logged in');
     }
-    return <String, dynamic>{};
+
+    final res = await http.delete(
+      Uri.parse('$baseUrl/api/leads/$id?user_id=${user.id}'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Failed to delete lead');
+    }
   }
 
-  String _extractError(
-    Map<String, dynamic> json, {
-    required String fallback,
-  }) {
-    final raw = json['error'];
-    if (raw == null) return fallback;
-    final message = raw.toString().trim();
-    return message.isEmpty ? fallback : message;
+  // Backward-compatible instance wrappers.
+  Future<List<Lead>> fetchLeadsTyped() async {
+    final raw = await fetchLeads();
+    return raw
+        .whereType<Map>()
+        .map((item) => Lead.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> updateLeadStatus(String id, String status) {
+    return updateStatus(id, status);
+  }
+
+  Future<void> createLeadLegacy(String name, String phone) {
+    return createLead(name, phone);
   }
 }

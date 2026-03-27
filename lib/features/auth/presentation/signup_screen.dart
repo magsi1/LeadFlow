@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/widgets/app_text_field.dart';
 import '../../../core/router/route_paths.dart';
+import '../../../core/utils/email_validation.dart';
+import '../../../core/utils/supabase_signup_messages.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../../app_state/providers.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -18,6 +22,70 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  bool _isSigningUp = false;
+
+  /// Signup runs only from this handler (never from [build] or listeners).
+  ///
+  /// [VoidCallback] tear-off: `onPressed: handleSignup` — not `handleSignup()`.
+  void handleSignup() {
+    // ignore: avoid_print, prefer_single_quotes — signup diagnostics (exact log strings)
+    print("Signup CLICKED");
+    if (_isSigningUp) return;
+    final busy = ref.read(appStateProvider).loading;
+    if (busy) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    _isSigningUp = true;
+    setState(() {});
+
+    unawaited(_executeSignupApi());
+  }
+
+  Future<void> _executeSignupApi() async {
+    try {
+      await ref.read(appStateProvider.notifier).signUp(
+            fullName: _name.text.trim(),
+            email: _email.text.trim(),
+            password: _password.text.trim(),
+          );
+      if (!mounted) return;
+      final res = ref.read(appStateProvider).currentUser;
+      // ignore: avoid_print, prefer_single_quotes — signup diagnostics (exact log strings)
+      print("Signup response: $res");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created successfully.'),
+        ),
+      );
+      context.go(RoutePaths.dashboard);
+    } on SignupFailure catch (e) {
+      // ignore: avoid_print, prefer_single_quotes — signup diagnostics (exact log strings)
+      print("Signup error: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isSignupRateLimited(e) ? signupRateLimitUserMessage : e.message,
+          ),
+        ),
+      );
+    } catch (e) {
+      // ignore: avoid_print, prefer_single_quotes — signup diagnostics (exact log strings)
+      print("Signup error: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isSignupRateLimited(e) ? signupRateLimitUserMessage : e.toString(),
+          ),
+        ),
+      );
+    } finally {
+      _isSigningUp = false;
+      if (mounted) setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -29,6 +97,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appBusy = ref.watch(appStateProvider).loading;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Create account')),
       body: Center(
@@ -49,7 +119,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   AppTextField(
                     controller: _email,
                     label: 'Email',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Email is required' : null,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) {
+                      final s = (v ?? '').trim();
+                      if (s.isEmpty) return 'Email is required';
+                      if (!isValidEmail(s)) return 'Please enter a valid email';
+                      if (!isAcceptableSignupEmail(s)) {
+                        return 'Use your real email (not placeholders like user@gmail.com)';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 12),
                   AppTextField(
@@ -60,22 +139,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
                   FilledButton(
-                    onPressed: () async {
-                      if (!_formKey.currentState!.validate()) return;
-                      try {
-                        await ref.read(appStateProvider.notifier).signUp(
-                              fullName: _name.text.trim(),
-                              email: _email.text.trim(),
-                              password: _password.text.trim(),
-                            );
-                        if (!context.mounted) return;
-                        context.go(RoutePaths.dashboard);
-                      } catch (e) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                      }
-                    },
-                    child: const Text('Create account'),
+                    onPressed: (_isSigningUp || appBusy) ? null : handleSignup,
+                    child: _isSigningUp
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Create account'),
                   ),
                 ],
               ),

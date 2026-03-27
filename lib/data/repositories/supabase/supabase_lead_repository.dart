@@ -1,13 +1,21 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/auth/supabase_auth_helpers.dart';
 import '../../models/activity.dart';
 import '../../models/follow_up.dart';
 import '../../models/lead.dart';
 import '../lead_repository.dart';
+import 'supabase_leads_select.dart';
 
 class SupabaseLeadRepository implements LeadRepository {
   SupabaseLeadRepository(this._client);
+
+  /// Columns for list fetch — see [SupabaseLeadsSelect.columns].
+  static const String _leadFetchColumns = SupabaseLeadsSelect.columns;
+
   final SupabaseClient _client;
   final StreamController<void> _changes = StreamController<void>.broadcast();
   RealtimeChannel? _channel;
@@ -75,7 +83,32 @@ class SupabaseLeadRepository implements LeadRepository {
 
   @override
   Future<List<Lead>> fetchLeads() async {
-    final rows = await _client.from('leads').select().order('created_at', ascending: false);
+    logLeadsDbOp('select (crm repository)');
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return <Lead>[];
+
+    if (kDebugMode) {
+      debugPrint('[LeadFlow] fetchLeads select: $_leadFetchColumns');
+    }
+
+    final rows = await _client
+        .from('leads')
+        .select(_leadFetchColumns)
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+
+    if (kDebugMode) {
+      debugPrint('[LeadFlow] fetchLeads: ${rows.length} row(s)');
+      if (rows.isNotEmpty) {
+        final first = rows.first;
+        final em = first['email'];
+        debugPrint(
+          '[LeadFlow] fetchLeads first row id=${first['id']} email=$em '
+          '(type: ${em.runtimeType})',
+        );
+      }
+    }
+
     return rows.map(_mapLead).toList();
   }
 
@@ -87,7 +120,28 @@ class SupabaseLeadRepository implements LeadRepository {
   @override
   Future<Lead> saveLead(Lead lead) async {
     final workspaceId = await _resolveWorkspaceId();
-    await _client.from('leads').upsert(_toLeadRow(lead, workspaceId: workspaceId));
+    logLeadsDbOp('upsert (crm repository)', extra: {'leadId': lead.id});
+    final user = requireLoggedInUser();
+
+    // ignore: avoid_print
+    print('INSERT USER ID: ${user.id}');
+    // ignore: avoid_print
+    print('DEBUG USER: ${user.id}');
+    final row = _toLeadRow(
+      lead,
+      workspaceId: workspaceId,
+      userId: user.id,
+    );
+    // ignore: avoid_print
+    print('UPSERT lead row user_id: ${row['user_id']}');
+
+    try {
+      await _client.from('leads').upsert(row);
+    } catch (e) {
+      // ignore: avoid_print
+      print('SUPABASE ERROR: $e');
+      rethrow;
+    }
     return lead;
   }
 
@@ -107,22 +161,30 @@ class SupabaseLeadRepository implements LeadRepository {
     });
   }
 
-  Map<String, dynamic> _toLeadRow(Lead lead, {String? workspaceId}) {
+  Map<String, dynamic> _toLeadRow(
+    Lead lead, {
+    required String userId,
+    String? workspaceId,
+  }) {
     return {
       'id': lead.id,
+      'user_id': userId,
       'workspace_id': workspaceId,
       'name': lead.customerName,
       'phone': lead.phone,
+      'email': lead.email.trim().isEmpty ? null : lead.email.trim(),
       'city': lead.city,
       'source_channel': _toSourceChannel(lead.source),
-      'status': _toLeadStatus(lead.status),
+      'status': lead.temperature.name,
       'assigned_to': lead.assignedTo,
       'notes': lead.notesSummary,
       'created_at': lead.createdAt.toIso8601String(),
       'updated_at': lead.updatedAt.toIso8601String(),
       'next_follow_up_at': lead.nextFollowUpAt?.toIso8601String(),
+      'next_followup': lead.nextFollowUpAt?.toIso8601String(),
       'conversation_id': lead.sourceMetadata['conversationId']?.toString(),
-      'priority': lead.temperature.name,
+      'priority': _toLeadStatus(lead.status),
+      'last_contacted': lead.lastContacted?.toIso8601String(),
       'created_by': lead.createdBy.isEmpty ? null : lead.createdBy,
       'score': lead.score,
       'score_category': lead.scoreCategory.name.toUpperCase(),
@@ -182,29 +244,56 @@ class SupabaseLeadRepository implements LeadRepository {
     return workspaceId;
   }
 
+  /// Null-safe: DB may return null before migration or for legacy rows.
+  static String _parseEmail(Object? value) {
+    if (value == null) return '';
+    final s = value.toString().trim();
+    return s;
+  }
+
   Lead _mapLead(Map<String, dynamic> row) {
+    final raw = (row['status'] ?? '').toString().toLowerCase().trim();
+    final LeadTemperature temp;
+    final LeadStatus deal;
+    if (raw == 'hot' || raw == 'warm' || raw == 'cold') {
+      temp = LeadTemperature.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => LeadTemperature.warm,
+      );
+      deal = Lead.leadStatusFromStorage(row['priority']?.toString());
+    } else {
+      deal = _fromLeadStatus(row['status']?.toString());
+      final tempRaw = (row['priority'] ?? 'warm').toString().toLowerCase();
+      temp = LeadTemperature.values.firstWhere(
+        (e) => e.name == tempRaw,
+        orElse: () => LeadTemperature.warm,
+      );
+    }
+    final nextFu = DateTime.tryParse(row['next_followup']?.toString() ?? '') ??
+        DateTime.tryParse(row['next_follow_up_at']?.toString() ?? '');
     return Lead(
       id: row['id']?.toString() ?? '',
       businessId: '',
       customerName: row['name']?.toString() ?? '',
       phone: row['phone']?.toString() ?? '',
+      email: _parseEmail(row['email']),
       alternatePhone: null,
       city: row['city']?.toString() ?? '',
       address: '',
-      source: row['source_channel']?.toString() ?? 'Other',
+      source: row['source']?.toString() ??
+          row['source_channel']?.toString() ??
+          'Other',
       productInterest: '',
       budget: '',
       inquiryText: '',
-      status: _fromLeadStatus(row['status']?.toString()),
-      temperature: LeadTemperature.values.firstWhere(
-        (e) => e.name == row['priority']?.toString(),
-        orElse: () => LeadTemperature.warm,
-      ),
+      status: deal,
+      temperature: temp,
       assignedTo: row['assigned_to']?.toString() ?? '',
       createdBy: row['created_by']?.toString() ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ?? DateTime.now(),
-      nextFollowUpAt: DateTime.tryParse(row['next_follow_up_at']?.toString() ?? ''),
+      nextFollowUpAt: nextFu,
+      lastContacted: DateTime.tryParse(row['last_contacted']?.toString() ?? ''),
       notesSummary: row['notes']?.toString() ?? '',
       sourceMetadata: {
         if (row['conversation_id'] != null) 'conversationId': row['conversation_id'].toString(),

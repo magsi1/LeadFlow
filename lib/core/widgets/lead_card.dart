@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/lead.dart';
+import '../lead_temperature_style.dart';
 import '../utils/formatters.dart';
 
+/// Lead summary card: **email** is shown directly under [Lead.customerName],
+/// bold and high-contrast; tap opens `mailto:` when the address looks valid.
 class LeadCard extends StatelessWidget {
   const LeadCard({
     super.key,
@@ -15,18 +19,82 @@ class LeadCard extends StatelessWidget {
   final String assignedName;
   final VoidCallback? onTap;
 
+  static String _displayEmail(Lead lead) {
+    final e = lead.email.trim();
+    if (e.isEmpty) return 'No Email';
+    return e;
+  }
+
+  static bool _canMailto(Lead lead) {
+    final e = lead.email.trim();
+    return e.isNotEmpty && e.contains('@');
+  }
+
+  Future<void> _openMailto() async {
+    if (!_canMailto(lead)) return;
+    final uri = Uri.parse('mailto:${lead.email.trim()}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
   Color _tempColor(BuildContext context) {
-    return switch (lead.temperature) {
-      LeadTemperature.hot => Colors.redAccent,
-      LeadTemperature.warm => Colors.orange,
-      LeadTemperature.cold => Colors.blueGrey,
-    };
+    return colorForLeadTemperature(lead.temperature);
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tempColor = _tempColor(context);
+    final mailto = _canMailto(lead);
+    final label = _displayEmail(lead);
+    final hasRealEmail = mailto;
+
+    final emailStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.15,
+          height: 1.3,
+          color: hasRealEmail ? cs.primary : Colors.grey.shade700,
+          fontStyle: hasRealEmail ? FontStyle.normal : FontStyle.italic,
+          decoration: hasRealEmail ? TextDecoration.underline : null,
+          decorationColor: cs.primary,
+          decorationThickness: 1.5,
+        );
+
+    final emailRow = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(
+            Icons.alternate_email_rounded,
+            size: 20,
+            color: hasRealEmail ? cs.primary : Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: MouseRegion(
+            cursor: hasRealEmail ? SystemMouseCursors.click : SystemMouseCursors.basic,
+            child: GestureDetector(
+              onTap: hasRealEmail ? _openMailto : null,
+              child: Semantics(
+                label: hasRealEmail ? 'Email $label' : label,
+                button: hasRealEmail,
+                child: Text(
+                  label,
+                  style: emailStyle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -41,6 +109,9 @@ class LeadCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       lead.customerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -57,6 +128,8 @@ class LeadCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              emailRow,
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/router/route_paths.dart';
 import '../../../core/utils/formatters.dart';
@@ -29,7 +30,12 @@ class LeadDetailsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(lead.customerName),
+        title: Text(
+          lead.customerName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+        ),
         actions: [
           IconButton(
             onPressed: () => context.push('${RoutePaths.addLead}?editId=${lead.id}'),
@@ -46,7 +52,15 @@ class LeadDetailsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(lead.customerName, style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    lead.customerName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  _EmailLine(lead: lead),
                   const SizedBox(height: 6),
                   Text('${lead.phone} • ${lead.city}'),
                   const SizedBox(height: 12),
@@ -83,6 +97,7 @@ class LeadDetailsScreen extends ConsumerWidget {
             context,
             'Lead Profile',
             [
+              _tile('Email', lead.email.trim().isEmpty ? 'No Email' : lead.email.trim()),
               _tile('Source', lead.source),
               _tile('Product Interest', lead.productInterest),
               _tile('Budget', lead.budget),
@@ -191,6 +206,35 @@ class LeadDetailsScreen extends ConsumerWidget {
           FilledButton(onPressed: () => Navigator.pop(context, ctrl.text), child: const Text('Save')),
         ],
       ),
+    );
+  }
+}
+
+class _EmailLine extends StatelessWidget {
+  const _EmailLine({required this.lead});
+
+  final Lead lead;
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = lead.email.trim();
+    final label = raw.isEmpty ? 'No Email' : raw;
+    final canMail = raw.isNotEmpty && raw.contains('@');
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: canMail ? Theme.of(context).colorScheme.primary : Colors.grey.shade700,
+          decoration: canMail ? TextDecoration.underline : null,
+        );
+    return GestureDetector(
+      onTap: canMail
+          ? () async {
+              final uri = Uri.parse('mailto:$raw');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri);
+              }
+            }
+          : null,
+      child: Text(label, style: style),
     );
   }
 }

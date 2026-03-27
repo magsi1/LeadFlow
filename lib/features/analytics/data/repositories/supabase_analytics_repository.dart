@@ -1,5 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/auth/supabase_auth_helpers.dart';
+import '../../../../services/lead_service.dart';
+import '../../../../data/repositories/supabase/supabase_leads_select.dart';
 import '../../../../data/models/activity.dart';
 import '../../../../data/models/app_user.dart';
 import '../../../../data/models/follow_up.dart';
@@ -19,10 +22,30 @@ class SupabaseAnalyticsRepository implements AnalyticsRepository {
   Future<AnalyticsDataset> fetchDataset(AnalyticsFilter filter) async {
     final workspaceId = filter.workspaceId ?? await _resolveWorkspaceId();
 
-    final leadsQuery = _client.from('leads').select();
-    final leadsRows = workspaceId == null
-        ? await leadsQuery
-        : await leadsQuery.eq('workspace_id', workspaceId);
+    final userId = _client.auth.currentUser?.id;
+    logLeadsDbOp('select (analytics_dataset)', extra: {
+      'workspaceId': workspaceId ?? '(any)',
+    });
+    List<Map<String, dynamic>> leadsRows;
+    if (userId == null) {
+      leadsRows = const [];
+    } else {
+      await LeadService.claimUnassignedLeadsForCurrentUser();
+      if (workspaceId == null) {
+        final raw = await _client
+            .from('leads')
+            .select(SupabaseLeadsSelect.columns)
+            .eq('assigned_to', userId);
+        leadsRows = List<Map<String, dynamic>>.from(raw);
+      } else {
+        final raw = await _client
+            .from('leads')
+            .select(SupabaseLeadsSelect.columns)
+            .eq('assigned_to', userId)
+            .eq('workspace_id', workspaceId);
+        leadsRows = List<Map<String, dynamic>>.from(raw);
+      }
+    }
 
     final followUpsQuery = _client.from('follow_ups').select();
     final followUpsRows = workspaceId == null
@@ -90,6 +113,11 @@ class SupabaseAnalyticsRepository implements AnalyticsRepository {
     );
   }
 
+  static String _parseLeadEmail(Object? value) {
+    if (value == null) return '';
+    return value.toString().trim();
+  }
+
   Lead _mapLead(Map<String, dynamic> row) {
     final status = row['status']?.toString();
     return Lead(
@@ -97,6 +125,7 @@ class SupabaseAnalyticsRepository implements AnalyticsRepository {
       businessId: row['workspace_id']?.toString() ?? '',
       customerName: row['name']?.toString() ?? '',
       phone: row['phone']?.toString() ?? '',
+      email: _parseLeadEmail(row['email']),
       city: row['city']?.toString() ?? '',
       address: '',
       source: row['source_channel']?.toString() ?? 'Other',
