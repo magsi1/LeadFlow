@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  SALESPERSON
+}
+
+enum ChannelType {
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  WEBSITE_CHAT
+}
+
+enum LeadStatus {
+  NEW
+  QUALIFYING
+  ASSIGNED
+  NURTURING
+  WON
+  LOST
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String
+  fullName     String
+  role         UserRole
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  assignedLeads Lead[]      @relation("LeadAssignee")
+  followUps    FollowUp[]   @relation("FollowUpOwner")
+  pushTokens   UserPushToken[]
+}
+
+model Lead {
+  id             String        @id @default(uuid())
+  fullName       String
+  email          String?
+  phone          String?
+  sourceChannel  ChannelType
+  status         LeadStatus    @default(NEW)
+  buyingIntent   String        @default("COLD")
+  score          Int           @default(0)
+  assignedToId   String?
+  assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  conversations  Conversation[]
+  followUps      FollowUp[]
+}
+
+model Conversation {
+  id          String      @id @default(uuid())
+  channel     ChannelType
+  externalId  String
+  leadId      String?
+  lead        Lead?       @relation(fields: [leadId], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  messages    Message[]
+
+  @@unique([channel, externalId])
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  senderName      String
+  text            String
+  isInbound       Boolean      @default(true)
+  aiIntentLabel   String?
+  aiIntentScore   Int?
+  createdAt       DateTime     @default(now())
+}
+
+model FollowUp {
+  id              String      @id @default(uuid())
+  leadId          String
+  lead            Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  ownerId         String
+  owner           User        @relation("FollowUpOwner", fields: [ownerId], references: [id])
+  dueAt           DateTime
+  note            String
+  completedAt     DateTime?
+  reminderSentAt  DateTime?
+  createdAt       DateTime    @default(now())
+}
+
+model IntegrationAccount {
+  id            String      @id @default(uuid())
+  channel       ChannelType
+  accountName   String
+  accessToken   String
+  webhookSecret String?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+}
+
+model WebhookEvent {
+  id          String     @id @default(uuid())
+  channel     ChannelType
+  eventType   String
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime   @default(now())
+}
+
+model AnalyticsEvent {
+  id          String     @id @default(uuid())
+  eventType   String
+  actorUserId String?
+  leadId      String?
+  metadata    Json?
+  createdAt   DateTime   @default(now())
+}
+
+model UserPushToken {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expoToken   String   @unique
+  deviceLabel String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

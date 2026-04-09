@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LeadFlow - MVP Mobile App (Flutter + Firebase Ready)
 
 LeadFlow is a production-style MVP mobile app for small businesses to capture and manage leads from WhatsApp, Facebook, Instagram, calls, walk-ins, website, and referrals.
@@ -187,3 +188,87 @@ Use the sample file in `firestore.rules` as a starting point.
 - Current MVP defaults to mock repositories for immediate preview.
 - Firebase repositories are included and ready for switching.
 - The architecture is intentionally clean but lightweight to avoid overengineering.
+=======
+# LeadFlow Mobile Monorepo
+
+LeadFlow Mobile is a mobile-only lead capture CRM for iOS/Android with Expo React Native + TypeScript and a NestJS backend.
+
+## Stack
+
+- Mobile: Expo, React Native, TypeScript, React Navigation, Zustand, Socket.IO client
+- Backend: NestJS, Prisma, PostgreSQL, Redis, BullMQ, WebSockets, OpenAI API
+- Shared: workspace package for common DTOs and enums
+
+## Monorepo Structure
+
+- `apps/mobile`: mobile app UI and state
+- `apps/api`: backend API, webhooks, AI services, queues, analytics
+- `packages/shared`: shared types/enums
+
+## Core Features Implemented
+
+- Unified inbox ingestion endpoint and conversation/message persistence
+- JWT authentication and role-based access guards (admin/manager/salesperson)
+- Webhook handlers for Meta channels, WhatsApp, and website chat
+- HMAC SHA256 webhook signature verification for Meta and WhatsApp
+- AI buying intent classification + AI auto-reply generation
+- Automatic lead assignment (round-robin by least loaded salesperson)
+- Follow-up scheduling with BullMQ delayed reminder jobs
+- WebSocket + Expo push notifications for assignments/reminders
+- Analytics dashboard endpoint
+- Role-based mobile UI navigation for admin/manager/salesperson
+- Demo mode with mock data, demo login, and seed endpoint
+
+## Environment Setup
+
+1. Copy:
+   - `apps/api/.env.example` -> `apps/api/.env`
+2. Set required values:
+   - `DATABASE_URL`
+   - `REDIS_URL`
+   - `OPENAI_API_KEY` (optional if demo mode enabled)
+   - `META_VERIFY_TOKEN`
+  - `META_APP_SECRET`
+  - `WHATSAPP_APP_SECRET` (optional if same as META_APP_SECRET)
+  - `JWT_SECRET`
+  - `JWT_EXPIRES_IN`
+   - `DEMO_MODE`
+
+For mobile:
+
+- Optional env vars:
+  - `EXPO_PUBLIC_API_URL` (default `http://localhost:4000`)
+  - `EXPO_PUBLIC_DEMO_MODE` (default `true`)
+
+## Run
+
+```bash
+npm install
+npm run prisma:generate -w @leadflow/api
+npx prisma migrate dev --schema apps/api/prisma/schema.prisma
+npm run dev:api
+npm run dev:mobile
+```
+
+## API Overview
+
+- `GET /inbox`
+- `POST /inbox/ingest`
+- `POST /auth/login`
+- `GET /leads`
+- `PATCH /leads/:leadId/status`
+- `GET /followups`
+- `GET /analytics/dashboard`
+- `POST /notifications/register-token`
+- `GET /integrations/meta/webhook`
+- `POST /integrations/meta/webhook`
+- `POST /integrations/whatsapp/webhook`
+- `POST /integrations/website-chat/webhook`
+- `POST /demo/seed`
+
+## Notes
+
+- Integration handlers are built for official webhook ingestion flows; connect app credentials/tokens in production.
+- In demo mode, app and API can run without external channel or OpenAI credentials.
+- Demo login password: `leadflow123` for `admin@leadflow.demo`, `manager@leadflow.demo`, `alex@leadflow.demo`.
+>>>>>>> 86634f0 (initial commit with backend)

@@ -1,0 +1,49 @@
+Fix Supabase environment configuration in this Flutter app.
+
+Problem:
+- Supabase URL and Anon Key are empty
+- Log shows: "Supabase env missing"
+- Auth cannot work without these values
+
+Tasks:
+
+1. Open AppConfig (or wherever supabaseUrl and supabaseAnonKey are defined).
+
+2. Ensure values are loaded correctly.
+
+If using --dart-define:
+- Add default fallback values for testing:
+
+static const supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://ovapurcexnrhodzeerqs.supabase.co',
+);
+
+static const supabaseAnonKey = String.fromEnvironment(
+  'SUPABASE_ANON_KEY',
+  defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92YXB1cmNleG5yaG9kemVlcnFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODQ1ODQsImV4cCI6MjA4OTI2MDU4NH0.qEgTprdWNZ7LpMK6RWf1J_ombXuonaMlxceOYunAPDU',
+);
+
+3. Replace placeholders with actual values from Supabase dashboard.
+
+4. Add debug print before initialization:
+
+debugPrint('SUPABASE URL: $supabaseUrl');
+debugPrint('SUPABASE KEY: ${supabaseAnonKey.substring(0, 10)}...');
+
+5. Ensure Supabase.initialize() uses these values.
+
+6. Alternative fix:
+If env still fails, hardcode temporarily:
+
+await Supabase.initialize(
+  url: 'https://ovapurcexnrhodzeerqs.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92YXB1cmNleG5yaG9kemVlcnFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODQ1ODQsImV4cCI6MjA4OTI2MDU4NH0.qEgTprdWNZ7LpMK6RWf1J_ombXuonaMlxceOYunAPDU',
+);
+
+7. Ensure no empty string is passed to Supabase.initialize.
+
+Goal:
+- Supabase URL is NOT empty
+- Login works
+- "No session found" disappears

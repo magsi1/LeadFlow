@@ -1,0 +1,13 @@
+$headers = @{
+  apikey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92YXB1cmNleG5yaG9kemVlcnFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODQ1ODQsImV4cCI6MjA4OTI2MDU4NH0.qEgTprdWNZ7LpMK6RWf1J_ombXuonaMlxceOYunAPDU"
+  Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92YXB1cmNleG5yaG9kemVlcnFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODQ1ODQsImV4cCI6MjA4OTI2MDU4NH0.qEgTprdWNZ7LpMK6RWf1J_ombXuonaMlxceOYunAPDU"
+  "Content-Type" = "application/json"
+}
+
+$body = @{
+  name = "Ali Khan"
+  phone = "03001234567"
+  message = "price please"
+} | ConvertTo-Json -Compress
+
+Invoke-RestMethod -Uri "https://ovapurcexnrhodzeerqs.functions.supabase.co/wati-webhook" -Method POST -Headers $headers -Body $body

@@ -1,0 +1,11 @@
+sb_publishable_j7-xKdf_XehUJmvMmdPIAg_05d3-xTg
+
+
+Invoke-RestMethod -Uri "https://ovapurcexnrhodzeerqs.functions.supabase.co/wati-webhook" `
+-Method POST `
+-Headers @{ 
+  "Content-Type" = "application/json"
+  "apikey" = "sb_publishable_j7-xKdf_XehUJmvMmdPIAg_05d3-xTg"
+  "Authorization" = "sb_publishable_j7-xKdf_XehUJmvMmdPIAg_05d3-xTg"
+} `
+-Body '{"waId":"923001234567","text":"Hello from WhatsApp test"}'

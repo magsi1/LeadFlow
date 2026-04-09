@@ -1,0 +1,5 @@
+LeadFlow2
+password = "d7Jx2ekD8jmCTFA4"
+
+Project URL = https://gxddsscaplfrfptgmcxa.supabase.co
+Anon Public Key = sb_publishable_RRRbkJc3ExCPJ01sLT3TLQ_UZxai_iR

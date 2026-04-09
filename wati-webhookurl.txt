@@ -1,0 +1,1 @@
+https://gxddsscaplfrfptgmcxa.supabase.co/functions/v1/wati-webhook
