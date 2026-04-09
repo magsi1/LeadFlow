@@ -262,6 +262,9 @@ export function LeadDetailScreen({ route, navigation }: Props) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [chatMessages, setChatMessages] = useState<LeadMessageRow[]>([]);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
+  const [waTemplateStep, setWaTemplateStep] = useState<"list" | "compose">("list");
+  const [waComposeText, setWaComposeText] = useState("");
+  const [waCustomDraft, setWaCustomDraft] = useState("");
 
   const { showToast } = useToast();
   const bumpLeadsDataRevision = useAppStore((s) => s.bumpLeadsDataRevision);
@@ -629,19 +632,67 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     };
   }, [lead]);
 
-  const sendWhatsAppTemplate = useCallback(
+  useEffect(() => {
+    if (!templatesModalOpen) {
+      setWaTemplateStep("list");
+      setWaComposeText("");
+      setWaCustomDraft("");
+    }
+  }, [templatesModalOpen]);
+
+  const openComposeFromTemplate = useCallback(
     (t: WhatsAppMessageTemplate) => {
-      const phone = formatPhone(lead?.phone);
-      if (!phone) {
+      if (!formatPhone(lead?.phone)) {
         showToast("Add a phone number to send a WhatsApp message.", "error");
         return;
       }
-      const text = applyWhatsAppTemplateWithLeadName(t.message, lead?.name);
-      void openWhatsAppWithPrefilledText(phone, text, { ...waOpenOpts, feedback: waFeedback });
-      setTemplatesModalOpen(false);
+      setWaComposeText(applyWhatsAppTemplateWithLeadName(t.message, lead?.name));
+      setWaTemplateStep("compose");
     },
-    [lead?.phone, lead?.name, showToast, waOpenOpts, waFeedback],
+    [lead?.phone, lead?.name, showToast],
   );
+
+  const openComposeFromCustomDraft = useCallback(() => {
+    if (!formatPhone(lead?.phone)) {
+      showToast("Add a phone number to send a WhatsApp message.", "error");
+      return;
+    }
+    const trimmed = waCustomDraft.trim();
+    if (!trimmed) {
+      showToast("Type a message first.", "error");
+      return;
+    }
+    setWaComposeText(trimmed);
+    setWaTemplateStep("compose");
+  }, [lead?.phone, waCustomDraft, showToast]);
+
+  const sendWhatsAppCompose = useCallback(async () => {
+    const msg = waComposeText.trim();
+    if (!msg) {
+      showToast("Message is empty.", "error");
+      return;
+    }
+    const phone = formatPhone(lead?.phone);
+    if (!phone) {
+      showToast("Add a phone number to send a WhatsApp message.", "error");
+      return;
+    }
+    await openWhatsAppWithPrefilledText(phone, msg, { ...waOpenOpts, feedback: waFeedback });
+    setTemplatesModalOpen(false);
+  }, [waComposeText, lead?.phone, waOpenOpts, waFeedback, showToast]);
+
+  const cancelWhatsAppCompose = useCallback(() => {
+    setWaTemplateStep("list");
+  }, []);
+
+  const closeTemplatesModal = useCallback(() => {
+    setTemplatesModalOpen(false);
+  }, []);
+
+  const onTemplatesModalRequestClose = useCallback(() => {
+    if (waTemplateStep === "compose") cancelWhatsAppCompose();
+    else closeTemplatesModal();
+  }, [waTemplateStep, cancelWhatsAppCompose, closeTemplatesModal]);
 
   if (loading) {
     return <LoadingScreen message="Loading lead…" />;
@@ -1007,57 +1058,129 @@ export function LeadDetailScreen({ route, navigation }: Props) {
         visible={templatesModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setTemplatesModalOpen(false)}
+        onRequestClose={onTemplatesModalRequestClose}
       >
         <View style={styles.templatesModalRoot}>
           <Pressable
             style={styles.templatesModalBackdrop}
-            onPress={() => setTemplatesModalOpen(false)}
+            onPress={onTemplatesModalRequestClose}
             accessibilityLabel="Dismiss templates"
           />
           <View style={styles.templatesModalSheet}>
-            <Text style={styles.templatesModalTitle}>WhatsApp templates</Text>
-            <Text style={styles.templatesModalSubtitle}>
-              {leadDisplayName(lead.name)} · Tap to open WhatsApp with the message filled in
-            </Text>
-            <ScrollView
-              style={styles.templatesModalScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={Platform.OS !== "web"}
-            >
-              {TEMPLATES.map((t) => {
-                const preview = applyWhatsAppTemplateWithLeadName(t.message, lead.name);
-                return (
-                  <Card key={t.id} style={styles.templateCard}>
-                    <Text style={styles.templateCardTitle}>
-                      {t.emoji} {t.name}
+            {waTemplateStep === "list" ? (
+              <>
+                <Text style={styles.templatesModalTitle}>WhatsApp templates</Text>
+                <Text style={styles.templatesModalSubtitle}>
+                  {leadDisplayName(lead.name)} · Preview and edit before sending
+                </Text>
+                <ScrollView
+                  style={styles.templatesModalScroll}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={Platform.OS !== "web"}
+                >
+                  {TEMPLATES.map((t) => {
+                    const preview = applyWhatsAppTemplateWithLeadName(t.message, lead.name);
+                    return (
+                      <Card key={t.id} style={styles.templateCard}>
+                        <Text style={styles.templateCardTitle}>
+                          {t.emoji} {t.name}
+                        </Text>
+                        <Text style={styles.templatePreview} numberOfLines={2}>
+                          {preview}
+                        </Text>
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.templateUseBtn,
+                            !formattedPhone && styles.templateUseBtnDisabled,
+                            pressed && styles.templateUseBtnPressed,
+                          ]}
+                          onPress={() => openComposeFromTemplate(t)}
+                          disabled={!formattedPhone}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Use template ${t.name}`}
+                        >
+                          <Text style={styles.templateUseBtnText}>Use Template</Text>
+                        </Pressable>
+                      </Card>
+                    );
+                  })}
+                  <View style={styles.templateCustomSection}>
+                    <Text style={styles.templateCustomTitle}>✏️ Custom message</Text>
+                    <Text style={styles.templateCustomHint}>
+                      Type any message (Urdu or English). Name is not added automatically—include it if you need it.
                     </Text>
-                    <Text style={styles.templatePreview}>{preview}</Text>
+                    <TextInput
+                      style={styles.templateCustomInput}
+                      value={waCustomDraft}
+                      onChangeText={setWaCustomDraft}
+                      placeholder="Your message…"
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                      textAlignVertical="top"
+                      editable={!!formattedPhone}
+                    />
                     <Pressable
                       style={({ pressed }) => [
-                        styles.templateUseBtn,
+                        styles.waSendWhatsAppBtn,
                         !formattedPhone && styles.templateUseBtnDisabled,
                         pressed && styles.templateUseBtnPressed,
                       ]}
-                      onPress={() => sendWhatsAppTemplate(t)}
+                      onPress={openComposeFromCustomDraft}
                       disabled={!formattedPhone}
                       accessibilityRole="button"
-                      accessibilityLabel={`Use template ${t.name}`}
+                      accessibilityLabel="Send custom message on WhatsApp"
                     >
-                      <Text style={styles.templateUseBtnText}>Use Template</Text>
+                      <Text style={styles.waSendWhatsAppBtnText}>Send on WhatsApp</Text>
                     </Pressable>
-                  </Card>
-                );
-              })}
-            </ScrollView>
-            <Pressable
-              style={({ pressed }) => [styles.templatesModalClose, pressed && styles.templatesModalClosePressed]}
-              onPress={() => setTemplatesModalOpen(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-            >
-              <Text style={styles.templatesModalCloseText}>Close</Text>
-            </Pressable>
+                  </View>
+                </ScrollView>
+                <Pressable
+                  style={({ pressed }) => [styles.templatesModalClose, pressed && styles.templatesModalClosePressed]}
+                  onPress={closeTemplatesModal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Text style={styles.templatesModalCloseText}>Close</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.templatesModalTitle}>Preview message</Text>
+                <Text style={styles.templatesModalSubtitle}>
+                  Edit the text below, then send to {leadDisplayName(lead.name)} on WhatsApp.
+                </Text>
+                <TextInput
+                  style={styles.waComposeInput}
+                  value={waComposeText}
+                  onChangeText={setWaComposeText}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="Message…"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.waSendWhatsAppBtn,
+                    !formattedPhone && styles.templateUseBtnDisabled,
+                    pressed && styles.templateUseBtnPressed,
+                  ]}
+                  onPress={() => void sendWhatsAppCompose()}
+                  disabled={!formattedPhone}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send on WhatsApp"
+                >
+                  <Text style={styles.waSendWhatsAppBtnText}>Send on WhatsApp</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.waComposeCancelBtn, pressed && styles.templatesModalClosePressed]}
+                  onPress={cancelWhatsAppCompose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.waComposeCancelText}>Cancel</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -1301,6 +1424,68 @@ const styles = StyleSheet.create({
   },
   templatesModalClosePressed: { opacity: 0.85 },
   templatesModalCloseText: { color: colors.primary, fontWeight: "700", fontSize: 16 },
+  templateCustomSection: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginBottom: 8,
+  },
+  templateCustomTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  templateCustomHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  templateCustomInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 100,
+    maxHeight: 200,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    backgroundColor: colors.cardSoft,
+    marginBottom: 12,
+  },
+  waComposeInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 160,
+    maxHeight: 280,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    backgroundColor: colors.cardSoft,
+    marginBottom: 14,
+  },
+  waSendWhatsAppBtn: {
+    backgroundColor: "#25D366",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+  },
+  waSendWhatsAppBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  waComposeCancelBtn: {
+    marginTop: 12,
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  waComposeCancelText: { color: colors.primary, fontWeight: "700", fontSize: 16 },
   fieldLabel: {
     color: colors.textMuted,
     fontSize: 12,

@@ -7,7 +7,7 @@ export type WhatsAppMessageTemplate = {
   message: string;
 };
 
-/** WhatsApp quick messages for Lead Detail (Urdu / Roman Urdu). */
+/** WhatsApp quick messages for Lead Detail (Urdu / Roman Urdu). `{name}` → lead name. */
 export const TEMPLATES: WhatsAppMessageTemplate[] = [
   {
     id: "greeting",
@@ -30,24 +30,32 @@ export const TEMPLATES: WhatsAppMessageTemplate[] = [
     message: "Dear {name}, aap ka quotation tayyar hai. Kab discuss kar sakte hain?",
   },
   {
-    id: "meeting",
+    id: "site_visit",
     name: "Site Visit",
-    emoji: "📅",
+    emoji: "🏠",
     message:
-      "Assalam o Alaikum {name}! Is week site visit schedule kar sakte hain assessment ke liye?",
+      "Assalam o Alaikum {name}! Kya hum aap ke ghar ka site visit schedule kar sakte hain solar assessment ke liye?",
   },
   {
-    id: "thanks",
-    name: "Thank You",
-    emoji: "🌟",
+    id: "payment_plan",
+    name: "Payment Plan",
+    emoji: "💰",
     message:
-      "Thank you {name} for choosing us! Best solar solution provide karenge. JazakAllah!",
+      "Dear {name}, hamare paas flexible payment plans hain solar system ke liye. Kya aap details sunna chahenge?",
   },
   {
-    id: "reminder",
-    name: "Payment Reminder",
-    emoji: "💳",
-    message: "Dear {name}, payment reminder. Koi problem ho to batayein.",
+    id: "deal_closing",
+    name: "Deal Closing",
+    emoji: "✅",
+    message:
+      "Dear {name}, aap ka solar system ready hai installation ke liye. Kab convenient hoga aap ke liye?",
+  },
+  {
+    id: "feedback_request",
+    name: "Feedback Request",
+    emoji: "⭐",
+    message:
+      "Assalam o Alaikum {name}! Umeed hai solar system theek chal raha hai. Koi feedback dena chahenge?",
   },
 ];
 
@@ -56,7 +64,6 @@ export const WHATSAPP_MESSAGE_TEMPLATES = TEMPLATES;
 
 /**
  * Replace `{name}` with the lead's stored name when present, otherwise a display-safe label.
- * Opens use `https://wa.me/{phone}?text=${encodeURIComponent(message)}` via {@link openWhatsAppWithPrefilledText}.
  */
 export function applyWhatsAppTemplateWithLeadName(
   template: string,
