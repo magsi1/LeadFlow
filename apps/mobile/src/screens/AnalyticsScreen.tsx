@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
@@ -14,6 +14,12 @@ import {
   type DealKpis,
   type MonthlyDealValueSeries,
 } from "../lib/dealValueAnalytics";
+import {
+  computePipelineFunnel,
+  fetchLeadsForPipelineFunnel,
+  type FunnelStageId,
+  type FunnelTimeFilter,
+} from "../lib/pipelineFunnelAnalytics";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import { api } from "../services/api";
 import { countMyAiRepliesInLastDays } from "../services/leadAiRepliesRepository";
@@ -22,6 +28,14 @@ import { useAppPreferencesStore } from "../state/useAppPreferencesStore";
 import { colors } from "../theme/colors";
 
 const emptyDashboard = emptyDashboardAnalytics();
+
+const FUNNEL_STAGE_COLORS: Record<FunnelStageId, string> = {
+  new: "#3b82f6",
+  contacted: "#eab308",
+  qualified: "#f97316",
+  won: "#22c55e",
+  lost: "#ef4444",
+};
 
 export function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
@@ -34,6 +48,13 @@ export function AnalyticsScreen() {
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyDealValueSeries>({ labels: [], amounts: [] });
   const [dealKpis, setDealKpis] = useState<DealKpis | null>(null);
   const appTimeZone = useAppPreferencesStore((s) => s.timeZone);
+  const [funnelLeadsRaw, setFunnelLeadsRaw] = useState<Awaited<ReturnType<typeof fetchLeadsForPipelineFunnel>>>([]);
+  const [funnelFilter, setFunnelFilter] = useState<FunnelTimeFilter>("all");
+
+  const funnel = useMemo(() => {
+    const tz = typeof appTimeZone === "string" && appTimeZone.trim() ? appTimeZone.trim() : "Asia/Karachi";
+    return computePipelineFunnel(funnelLeadsRaw, funnelFilter, tz);
+  }, [funnelLeadsRaw, funnelFilter, appTimeZone]);
 
   const load = useCallback(async () => {
     const { dashboard, apiError } = await loadDashboardAnalytics({
@@ -44,6 +65,12 @@ export function AnalyticsScreen() {
     setAnalytics(dashboard);
     setError(apiError);
     if (isSupabaseConfigured()) {
+      try {
+        const funnelRows = await fetchLeadsForPipelineFunnel();
+        setFunnelLeadsRaw(funnelRows);
+      } catch {
+        setFunnelLeadsRaw([]);
+      }
       try {
         const n = await countMyAiRepliesInLastDays(30);
         setAiReplies30d(n);
@@ -64,6 +91,7 @@ export function AnalyticsScreen() {
         setDealKpis(null);
       }
     } else {
+      setFunnelLeadsRaw([]);
       setAiReplies30d(null);
       setMonthlyRevenue({ labels: [], amounts: [] });
       setDealKpis(null);
@@ -154,6 +182,123 @@ export function AnalyticsScreen() {
     >
       <Text style={styles.title}>Analytics</Text>
       <Text style={styles.subtitle}>Pipeline overview</Text>
+
+      {isSupabaseConfigured() ? (
+        <View style={styles.filterRow}>
+          {(
+            [
+              { id: "all" as const, label: "All Time" },
+              { id: "month" as const, label: "This Month" },
+              { id: "week" as const, label: "This Week" },
+            ] as const
+          ).map((opt) => (
+            <Pressable
+              key={opt.id}
+              onPress={() => setFunnelFilter(opt.id)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                funnelFilter === opt.id && styles.filterChipActive,
+                pressed && styles.filterChipPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: funnelFilter === opt.id }}
+            >
+              <Text style={[styles.filterChipText, funnelFilter === opt.id && styles.filterChipTextActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {isSupabaseConfigured() ? (
+        <Card style={styles.funnelCard}>
+          <Text style={styles.cardEyebrow}>Pipeline conversion funnel</Text>
+          <Text style={styles.funnelHint}>
+            Leads created in the selected period · Exclusive stage counts
+          </Text>
+          {funnel.totalLeads === 0 ? (
+            <Text style={styles.funnelEmpty}>No leads in this period.</Text>
+          ) : (
+            <>
+              {funnel.stages.map((s) => (
+                <View key={s.id} style={styles.funnelStageBlock}>
+                  <View style={styles.funnelBarTrack}>
+                    <View
+                      style={[
+                        styles.funnelBarFill,
+                        {
+                          width: `${s.barWidthPct}%`,
+                          backgroundColor: FUNNEL_STAGE_COLORS[s.id],
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.funnelStageMeta}>
+                    <Text style={styles.funnelStageTitle}>
+                      {s.label}: {s.count} · {s.pctOfTotal.toFixed(0)}% · {formatPkrEnIn(s.valuePkr)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+              {funnel.dropOffs.length > 0 ? (
+                <View style={styles.dropOffBox}>
+                  <Text style={styles.dropOffTitle}>Stage progression (cohort)</Text>
+                  {funnel.dropOffs.map((d, i) => (
+                    <Text key={`${d.fromLabel}-${i}`} style={styles.dropOffLine}>
+                      {d.pctMovedToNext.toFixed(0)}% moved from {d.fromLabel} → {d.toLabel}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          )}
+        </Card>
+      ) : null}
+
+      {isSupabaseConfigured() ? (
+        <View style={styles.metricCardRow}>
+          <Card style={styles.metricCardMini}>
+            <Text style={styles.metricCardEyebrow}>New → Won</Text>
+            <Text style={styles.metricCardBig}>{funnel.totalLeads > 0 ? `${funnel.overallNewToWonPct.toFixed(1)}%` : "—"}</Text>
+            <Text style={styles.metricCardSub}>Overall conversion</Text>
+          </Card>
+          <Card style={styles.metricCardMini}>
+            <Text style={styles.metricCardEyebrow}>Avg won deal</Text>
+            <Text style={styles.metricCardBig}>
+              {funnel.avgWonDealPkr != null ? formatPkrEnIn(funnel.avgWonDealPkr) : "—"}
+            </Text>
+            <Text style={styles.metricCardSub}>PKR ÷ won leads</Text>
+          </Card>
+          <Card style={styles.metricCardMini}>
+            <Text style={styles.metricCardEyebrow}>Most leads</Text>
+            <Text style={styles.metricCardBig} numberOfLines={1}>
+              {funnel.bestRetainingStageLabel}
+            </Text>
+            <Text style={styles.metricCardSub}>Largest stage bucket</Text>
+          </Card>
+        </View>
+      ) : null}
+
+      {isSupabaseConfigured() ? (
+        <Card>
+          <Text style={styles.cardEyebrow}>Stage breakdown</Text>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableCell, styles.tableHead, styles.tableColStage]}>Stage</Text>
+            <Text style={[styles.tableCell, styles.tableHead, styles.tableColNum]}>Leads</Text>
+            <Text style={[styles.tableCell, styles.tableHead, styles.tableColVal]}>Value</Text>
+            <Text style={[styles.tableCell, styles.tableHead, styles.tableColPct]}>Share</Text>
+          </View>
+          {funnel.tableRows.map((row) => (
+            <View key={row.stage} style={styles.tableRow}>
+              <Text style={[styles.tableCell, styles.tableColStage]}>{row.stage}</Text>
+              <Text style={[styles.tableCell, styles.tableColNum]}>{row.leads}</Text>
+              <Text style={[styles.tableCell, styles.tableColVal]}>{formatPkrEnIn(row.valuePkr)}</Text>
+              <Text style={[styles.tableCell, styles.tableColPct]}>{row.conversionLabel}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       {error ? (
         <Card style={styles.errorCard}>
@@ -330,4 +475,105 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 8,
   },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardSoft,
+  },
+  filterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}22`,
+  },
+  filterChipPressed: { opacity: 0.9 },
+  filterChipText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
+  filterChipTextActive: { color: colors.primary },
+  funnelCard: { marginBottom: 12 },
+  funnelHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 14,
+  },
+  funnelEmpty: { color: colors.textMuted, fontSize: 14, fontStyle: "italic" },
+  funnelStageBlock: { marginBottom: 12 },
+  funnelBarTrack: {
+    height: 14,
+    borderRadius: 8,
+    backgroundColor: colors.cardSoft,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  funnelBarFill: {
+    height: 14,
+    borderRadius: 8,
+    minWidth: 4,
+  },
+  funnelStageMeta: { paddingLeft: 2 },
+  funnelStageTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  dropOffBox: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    gap: 6,
+  },
+  dropOffTitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  dropOffLine: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  metricCardRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 12,
+  },
+  metricCardMini: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minWidth: 100,
+    paddingVertical: 12,
+  },
+  metricCardEyebrow: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+  metricCardBig: { color: colors.text, fontSize: 20, fontWeight: "800" },
+  metricCardSub: { color: colors.textMuted, fontSize: 11, marginTop: 6 },
+  tableHeader: {
+    flexDirection: "row",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  tableCell: { color: colors.text, fontSize: 13 },
+  tableHead: { color: colors.textMuted, fontWeight: "800", fontSize: 12 },
+  tableColStage: { flex: 1.2, minWidth: 72 },
+  tableColNum: { width: 44, textAlign: "right" },
+  tableColVal: { flex: 1, textAlign: "right" },
+  tableColPct: { width: 52, textAlign: "right" },
 });
