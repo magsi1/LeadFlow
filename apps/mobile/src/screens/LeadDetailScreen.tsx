@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Linking,
   type LayoutChangeEvent,
   Modal,
@@ -16,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Card } from "../components/Card";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { SetFollowUpButton, type OpenFollowUpPickerOptions } from "../components/SetFollowUpButton";
@@ -97,6 +99,18 @@ type FollowUpAiSuggestion = {
   emoji: string;
   dueAtIso: string;
 };
+
+type AiLeadChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
+const AI_CHAT_STARTERS = [
+  "What should I say to close this deal?",
+  "Why is this lead cold?",
+  "Draft a follow-up message",
+] as const;
 
 function staticFollowUpSuggestions(): FollowUpAiSuggestion[] {
   const todayPm = new Date();
@@ -335,6 +349,13 @@ export function LeadDetailScreen({ route, navigation }: Props) {
   const [followUpSuggestions, setFollowUpSuggestions] = useState<FollowUpAiSuggestion[]>([]);
   const followUpPickerRef = useRef<(opts?: OpenFollowUpPickerOptions) => void>(() => undefined);
 
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatMessages, setAiChatMessages] = useState<AiLeadChatMessage[]>([]);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+  const aiChatScrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
+
   const { showToast } = useToast();
   const bumpLeadsDataRevision = useAppStore((s) => s.bumpLeadsDataRevision);
 
@@ -432,6 +453,12 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     return () => {
       cancelled = true;
     };
+  }, [leadId]);
+
+  useEffect(() => {
+    setAiChatMessages([]);
+    setAiChatInput("");
+    setAiChatLoading(false);
   }, [leadId]);
 
   useFocusEffect(
@@ -728,6 +755,22 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     };
   }, [lead, leadScoring.score]);
 
+  const leadContextForAiChat = useMemo(() => {
+    if (!lead) return null;
+    const dv = coerceDealValue(lead.deal_value);
+    return {
+      name: leadDisplayName(lead.name),
+      score: leadScoring.score,
+      stage: formatLeadStageLabel(lead.status),
+      priority: formatLeadPriorityDisplay(lead.priority),
+      dealValuePkr: dv,
+      dealValueDisplay: dv > 0 ? formatPkrEnIn(dv) : "—",
+      city: (lead.city ?? "").trim(),
+      source: getSourceLabel(lead.source_channel ?? lead.source),
+      notes: (lead.notes ?? "").trim(),
+    };
+  }, [lead, leadScoring.score]);
+
   const fetchFollowUpSuggestions = useCallback(async () => {
     setFollowUpSuggestLoading(true);
     setFollowUpSuggestErr(null);
@@ -927,6 +970,145 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     }
   }, [lead, leadScoring.score]);
 
+  const closeAiChatModal = useCallback(() => {
+    setAiChatOpen(false);
+  }, []);
+
+  const sendAiChatMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || aiChatLoading) return;
+      if (!leadContextForAiChat) return;
+
+      if (!isSupabaseConfigured()) {
+        showToast(supabaseEnvError ?? "Supabase is not configured.", "error");
+        return;
+      }
+
+      let accessToken: string;
+      let fnCfg: NonNullable<ReturnType<typeof getSupabaseFunctionFetchConfig>>;
+      try {
+        const supabaseClient = getSupabaseClient();
+        const {
+          data: { session },
+        } = await supabaseClient.auth.getSession();
+        const tok = session?.access_token?.trim();
+        if (!tok) {
+          showToast("Sign in to use AI chat.", "error");
+          return;
+        }
+        accessToken = tok;
+        const cfg = getSupabaseFunctionFetchConfig();
+        if (!cfg) {
+          showToast(supabaseEnvError ?? "Supabase is not configured.", "error");
+          return;
+        }
+        fnCfg = cfg;
+      } catch (e) {
+        showToast(toUserFacingAiError(e), "error");
+        return;
+      }
+
+      const userMsg: AiLeadChatMessage = {
+        id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        role: "user",
+        content: trimmed,
+      };
+      const historyForApi = [
+        ...aiChatMessages.map(({ role, content }) => ({ role, content })),
+        { role: "user" as const, content: trimmed },
+      ];
+
+      setAiChatMessages((prev) => [...prev, userMsg]);
+      setAiChatInput("");
+      setAiChatLoading(true);
+
+      try {
+        const response = await fetch(`${fnCfg.url}/functions/v1/ai-lead-chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+            apikey: fnCfg.anonKey,
+          },
+          body: JSON.stringify({
+            messages: historyForApi,
+            leadContext: leadContextForAiChat,
+          }),
+        });
+        const raw = await response.text();
+        let parsed: { reply?: string; error?: string };
+        try {
+          parsed = JSON.parse(raw) as { reply?: string; error?: string };
+        } catch {
+          setAiChatMessages((prev) => [
+            ...prev,
+            {
+              id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              role: "assistant",
+              content: "Invalid response from AI. Please try again.",
+            },
+          ]);
+          return;
+        }
+        if (!response.ok) {
+          const err =
+            typeof parsed.error === "string" && parsed.error.trim()
+              ? parsed.error.trim()
+              : `Request failed (${response.status})`;
+          setAiChatMessages((prev) => [
+            ...prev,
+            {
+              id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              role: "assistant",
+              content: err,
+            },
+          ]);
+          return;
+        }
+        const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+        if (!reply) {
+          setAiChatMessages((prev) => [
+            ...prev,
+            {
+              id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              role: "assistant",
+              content: "The AI returned an empty reply. Try again.",
+            },
+          ]);
+          return;
+        }
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            role: "assistant",
+            content: reply,
+          },
+        ]);
+      } catch (e) {
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            role: "assistant",
+            content: toUserFacingAiError(e),
+          },
+        ]);
+      } finally {
+        setAiChatLoading(false);
+      }
+    },
+    [aiChatLoading, aiChatMessages, leadContextForAiChat, showToast],
+  );
+
+  useEffect(() => {
+    if (!aiChatOpen) return;
+    requestAnimationFrame(() => {
+      aiChatScrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [aiChatOpen, aiChatMessages, aiChatLoading]);
+
   useEffect(() => {
     if (!templatesModalOpen) {
       setWaTemplateStep("list");
@@ -1096,6 +1278,15 @@ export function LeadDetailScreen({ route, navigation }: Props) {
           >
             <Ionicons name="create-outline" size={20} color={colors.primary} />
             <Text style={styles.quickOutlineText}>Edit</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.quickBtn, styles.quickOutline, pressed && styles.quickPressed]}
+            onPress={() => setAiChatOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open AI chat for this lead"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.primary} />
+            <Text style={styles.quickOutlineText}>AI Chat 🤖</Text>
           </Pressable>
           <View style={styles.quickFollowSlot}>
             <SetFollowUpButton
@@ -1603,6 +1794,114 @@ export function LeadDetailScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={aiChatOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeAiChatModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.aiChatKeyboardRoot}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+        >
+          <View style={[styles.aiChatRoot, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+            <View style={styles.aiChatHeader}>
+              <Pressable
+                onPress={closeAiChatModal}
+                style={({ pressed }) => [styles.aiChatHeaderBack, pressed && styles.quickPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Close AI chat"
+              >
+                <Ionicons name="chevron-back" size={26} color={colors.text} />
+              </Pressable>
+              <Text style={styles.aiChatHeaderTitle} numberOfLines={1}>
+                AI Assistant · {leadDisplayName(lead.name)}
+              </Text>
+              <View style={styles.aiChatHeaderSpacer} />
+            </View>
+
+            <ScrollView
+              ref={aiChatScrollRef}
+              style={styles.aiChatScroll}
+              contentContainerStyle={styles.aiChatScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={Platform.OS !== "web"}
+            >
+              <View style={styles.chatBubbles}>
+                {aiChatMessages.map((m) => (
+                  <View
+                    key={m.id}
+                    style={[styles.chatRow, m.role === "user" ? styles.chatRowUser : styles.chatRowLead]}
+                  >
+                    <View
+                      style={[
+                        styles.chatBubble,
+                        m.role === "user" ? styles.chatBubbleUser : styles.aiChatBubbleAssistant,
+                      ]}
+                    >
+                      <Text style={styles.chatBubbleText}>{m.content}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+              {aiChatLoading ? (
+                <View style={styles.aiChatTypingRow}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.aiChatTypingText}>Thinking…</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            {aiChatMessages.length === 0 && !aiChatLoading ? (
+              <View style={styles.aiChatStarters}>
+                <Text style={styles.aiChatStartersLabel}>Try asking</Text>
+                <View style={styles.aiChatChipsWrap}>
+                  {AI_CHAT_STARTERS.map((s) => (
+                    <Pressable
+                      key={s}
+                      style={({ pressed }) => [styles.aiChatChip, pressed && styles.aiChatChipPressed]}
+                      onPress={() => void sendAiChatMessage(s)}
+                      accessibilityRole="button"
+                      accessibilityLabel={s}
+                    >
+                      <Text style={styles.aiChatChipText}>{s}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.aiChatInputRow}>
+              <TextInput
+                style={styles.aiChatTextInput}
+                value={aiChatInput}
+                onChangeText={setAiChatInput}
+                placeholder="Ask about this lead…"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={4000}
+                editable={!aiChatLoading}
+                textAlignVertical="top"
+              />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.aiChatSendBtn,
+                  (!aiChatInput.trim() || aiChatLoading) && styles.aiChatSendBtnDisabled,
+                  pressed && styles.aiChatSendBtnPressed,
+                ]}
+                onPress={() => void sendAiChatMessage(aiChatInput)}
+                disabled={!aiChatInput.trim() || aiChatLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+              >
+                <Ionicons name="send" size={20} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -2219,4 +2518,96 @@ const styles = StyleSheet.create({
   followUpCustomBtnText: { color: colors.primary, fontWeight: "800", fontSize: 15 },
   followUpSuggestClose: { marginTop: 8, alignItems: "center", paddingVertical: 12 },
   followUpSuggestCloseText: { color: colors.textMuted, fontWeight: "700", fontSize: 16 },
+  aiChatKeyboardRoot: { flex: 1, backgroundColor: colors.bg },
+  aiChatRoot: { flex: 1, backgroundColor: colors.bg },
+  aiChatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    gap: 8,
+  },
+  aiChatHeaderBack: { padding: 6 },
+  aiChatHeaderSpacer: { width: 38 },
+  aiChatHeaderTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  aiChatScroll: { flex: 1 },
+  aiChatScrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20, flexGrow: 1 },
+  aiChatBubbleAssistant: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopLeftRadius: 2,
+  },
+  aiChatTypingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  aiChatTypingText: { color: colors.textMuted, fontSize: 13 },
+  aiChatStarters: { paddingHorizontal: 16, paddingBottom: 8 },
+  aiChatStartersLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  aiChatChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  aiChatChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: colors.cardSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxWidth: "100%",
+  },
+  aiChatChipPressed: { opacity: 0.9 },
+  aiChatChipText: { color: colors.text, fontSize: 13, lineHeight: 18 },
+  aiChatInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  aiChatTextInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    backgroundColor: colors.cardSoft,
+  },
+  aiChatSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiChatSendBtnDisabled: { opacity: 0.45 },
+  aiChatSendBtnPressed: { opacity: 0.88 },
 });
