@@ -1,3 +1,4 @@
+import { colors } from "../theme/colors";
 import { coerceDealValue } from "./dealValue";
 
 export type ScoreReason = {
@@ -278,25 +279,36 @@ export function calculateLeadScore(lead: LeadScoreInput): { score: number; reaso
   };
 }
 
+/** 0–30 Cold, 31–60 Warm, 61–80 Hot, 81–100 Fire. */
 export function getScoreColor(score: number): string {
-  if (score >= 80) return "#FF4444";
-  if (score >= 60) return "#FF8C00";
-  if (score >= 40) return "#FFD700";
-  return "#888888";
+  const n = Math.max(0, Math.min(100, Math.round(score)));
+  if (n <= 30) return colors.scoreCold;
+  if (n <= 60) return colors.scoreWarm;
+  if (n <= 80) return colors.scoreHot;
+  return colors.scoreFire;
 }
 
 export function getScoreLabel(score: number): string {
-  if (score >= 80) return "Hot 🔥";
-  if (score >= 60) return "Warm ♨️";
-  if (score >= 40) return "Cool 😐";
-  return "Cold 🧊";
+  const n = Math.max(0, Math.min(100, Math.round(score)));
+  if (n <= 30) return "Cold";
+  if (n <= 60) return "Warm";
+  if (n <= 80) return "Hot";
+  return "Fire 🔥";
 }
 
 export function getScoreEmoji(score: number): string {
-  if (score >= 80) return "🔥";
-  if (score >= 60) return "♨️";
-  if (score >= 40) return "💧";
-  return "🧊";
+  const n = Math.max(0, Math.min(100, Math.round(score)));
+  if (n <= 30) return "🧊";
+  if (n <= 60) return "♨️";
+  if (n <= 80) return "🔥";
+  return "🔥";
+}
+
+/** Readable label color on {@link getScoreColor} background (yellow band needs dark text). */
+export function getScoreBadgeForeground(score: number): string {
+  const n = Math.max(0, Math.min(100, Math.round(score)));
+  if (n >= 61 && n <= 80) return "#020617";
+  return "#ffffff";
 }
 
 export function inboxLeadToScoreInput(lead: {

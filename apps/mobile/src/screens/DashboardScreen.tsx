@@ -1,5 +1,5 @@
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -13,8 +13,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { AddLeadFab } from "../components/AddLeadFab";
 import { Card } from "../components/Card";
+import { DashboardSkeleton } from "../components/DashboardSkeleton";
+import { FadeIn } from "../components/FadeIn";
 import { KpiCard, type KpiTrend } from "../components/KpiCard";
-import { LoadingScreen } from "../components/LoadingScreen";
 import { DashboardCharts } from "../components/DashboardCharts";
 import { DashboardInsights } from "../components/DashboardInsights";
 import { LeadSourcesSection } from "../components/LeadSourcesSection";
@@ -30,7 +31,14 @@ import {
   loadDashboardAnalytics,
   type ChartDataPoint,
 } from "../lib/dashboardAnalytics";
-import { calculateLeadScore, getScoreEmoji, inboxLeadToScoreInput } from "../lib/leadScoring";
+import {
+  calculateLeadScore,
+  getScoreBadgeForeground,
+  getScoreColor,
+  getScoreEmoji,
+  getScoreLabel,
+  inboxLeadToScoreInput,
+} from "../lib/leadScoring";
 import { filterValidInboxLeads, leadDisplayName } from "../lib/safeData";
 import { getSupabaseClient, isSupabaseConfigured } from "../lib/supabaseClient";
 import type { MainTabScreenProps } from "../navigation/types";
@@ -247,10 +255,6 @@ export function DashboardScreen({ navigation }: Props) {
     if (r !== null) prevConversionRateRef.current = r;
   }, [loading, analytics]);
 
-  if (loading) {
-    return <LoadingScreen message="Loading dashboard…" />;
-  }
-
   const safeAnalytics = analytics;
   const totals = safeAnalytics?.totals;
   const byStatus = safeAnalytics?.byStatus ?? emptyDashboard.byStatus;
@@ -319,6 +323,38 @@ export function DashboardScreen({ navigation }: Props) {
   const hasMeaningfulData =
     safeTotals.totalLeads > 0 || safeTotals.followUpsDue > 0 || safeTotals.leadsToday > 0;
 
+  const greeting = useMemo(() => {
+    const name = user?.fullName?.trim() || "there";
+    const h = new Date().getHours();
+    let part = "Good evening";
+    if (h >= 5 && h < 12) part = "Good morning";
+    else if (h >= 12 && h < 17) part = "Good afternoon";
+    const icon = h >= 6 && h < 18 ? "☀️" : "✨";
+    return `${part}, ${name}! ${icon}`;
+  }, [user?.fullName]);
+
+  const pipelineValueBars = useMemo(() => {
+    const n = pvRow.new;
+    const c = pvRow.contacted;
+    const q = pvRow.qualified;
+    const t = n + c + q;
+    const pct = (v: number) => (t > 0 ? Math.min(100, Math.round((v / t) * 100)) : 0);
+    return [
+      { key: "new", label: "New", value: n, pct: pct(n), fill: "#3b82f6" },
+      { key: "contacted", label: "Contacted", value: c, pct: pct(c), fill: "#eab308" },
+      { key: "qualified", label: "Qualified", value: q, pct: pct(q), fill: "#f97316" },
+    ];
+  }, [pvRow.new, pvRow.contacted, pvRow.qualified]);
+
+  if (loading) {
+    return (
+      <View style={styles.page}>
+        <DashboardSkeleton />
+        <AddLeadFab />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.page}>
       <ScrollView
@@ -326,291 +362,317 @@ export function DashboardScreen({ navigation }: Props) {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 88 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.headerRow}>
-          <View style={styles.headerTitles}>
-            <Text style={styles.title}>Dashboard</Text>
-            <Text style={styles.subtitle}>Today's snapshot</Text>
+        <FadeIn>
+          <Text style={styles.greeting}>{greeting}</Text>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitles}>
+              <Text style={styles.title}>Dashboard</Text>
+              <Text style={styles.subtitle}>Today's snapshot</Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.refreshBtn,
+                (refreshing || loading) && styles.refreshBtnDisabled,
+                pressed && styles.refreshBtnPressed,
+              ]}
+              onPress={() => void manualRefresh()}
+              disabled={refreshing || loading}
+              accessibilityRole="button"
+              accessibilityLabel="Refresh dashboard"
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={colors.primary}
+                style={{ opacity: refreshing || loading ? 0.45 : 1 }}
+              />
+              <Text style={styles.refreshBtnText}>Refresh</Text>
+            </Pressable>
           </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.refreshBtn,
-              (refreshing || loading) && styles.refreshBtnDisabled,
-              pressed && styles.refreshBtnPressed,
-            ]}
-            onPress={() => void manualRefresh()}
-            disabled={refreshing || loading}
-            accessibilityRole="button"
-            accessibilityLabel="Refresh dashboard"
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={20}
-              color={colors.primary}
-              style={{ opacity: refreshing || loading ? 0.45 : 1 }}
-            />
-            <Text style={styles.refreshBtnText}>Refresh</Text>
-          </Pressable>
-        </View>
 
-        {refreshing ? (
-          <View style={styles.fetchingStrip} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.fetchingStripText}>Updating dashboard…</Text>
-          </View>
-        ) : null}
+          {refreshing ? (
+            <View style={styles.fetchingStrip} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.fetchingStripText}>Updating dashboard…</Text>
+            </View>
+          ) : null}
 
-        {!hasMeaningfulData && !error ? (
-          <Card style={styles.infoCard}>
-            <Text style={styles.infoTitle}>No data available</Text>
-            <Text style={styles.infoHint}>Add leads or connect Supabase to see metrics here.</Text>
-          </Card>
-        ) : null}
+          {!hasMeaningfulData && !error ? (
+            <Card style={styles.infoCard}>
+              <Text style={styles.infoTitle}>No data available</Text>
+              <Text style={styles.infoHint}>Add leads or connect Supabase to see metrics here.</Text>
+            </Card>
+          ) : null}
 
-        {error ? (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>{error}</Text>
-            <Text style={styles.errorHint}>Showing safe defaults. Check Supabase and API when you can.</Text>
-          </Card>
-        ) : null}
+          {error ? (
+            <Card style={styles.errorCard}>
+              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorHint}>Showing safe defaults. Check Supabase and API when you can.</Text>
+            </Card>
+          ) : null}
 
-        <FollowUpOverdueAlert
-          followUps={safeTotals.followUpsDue}
-          onViewFollowUps={() => navigation.navigate("FollowUps")}
-        />
+          <FollowUpOverdueAlert
+            followUps={safeTotals.followUpsDue}
+            onViewFollowUps={() => navigation.navigate("FollowUps")}
+          />
 
-        {hotLeads.length > 0 ? (
-          <View style={styles.hotLeadsSection}>
-            <Text style={styles.hotLeadsTitle}>Hot leads today 🔥</Text>
-            {hotLeads.map((l) => {
-              const sc =
-                typeof l.lead_score === "number" && Number.isFinite(l.lead_score) ? l.lead_score : 0;
-              const city = l.city?.trim() ? l.city.trim() : "—";
-              const stage = l.status ? formatLeadStageLabel(l.status) : "—";
-              return (
-                <Pressable
-                  key={l.id}
-                  style={({ pressed }) => [styles.hotLeadCard, pressed && styles.hotLeadCardPressed]}
-                  onPress={() => navigation.navigate("LeadDetail", { leadId: l.id })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open lead ${leadDisplayName(l.name)}`}
-                >
-                  <View style={styles.hotLeadLine}>
-                    <Text style={styles.hotLeadEmoji}>{getScoreEmoji(sc)}</Text>
-                    <Text style={styles.hotLeadScore}>{sc}</Text>
-                    <Text style={styles.hotLeadName} numberOfLines={1}>
-                      {leadDisplayName(l.name)}
+          {hotLeads.length > 0 ? (
+            <View style={styles.hotLeadsSection}>
+              <Text style={styles.hotLeadsTitle}>Hot leads today 🔥</Text>
+              {hotLeads.map((l) => {
+                const sc =
+                  typeof l.lead_score === "number" && Number.isFinite(l.lead_score) ? l.lead_score : 0;
+                const city = l.city?.trim() ? l.city.trim() : "—";
+                const stage = l.status ? formatLeadStageLabel(l.status) : "—";
+                return (
+                  <Pressable
+                    key={l.id}
+                    style={({ pressed }) => [styles.hotLeadCard, pressed && styles.hotLeadCardPressed]}
+                    onPress={() => navigation.navigate("LeadDetail", { leadId: l.id })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open lead ${leadDisplayName(l.name)}`}
+                  >
+                    <View style={styles.hotLeadLine}>
+                      <Text style={styles.hotLeadName} numberOfLines={1}>
+                        {leadDisplayName(l.name)}
+                      </Text>
+                      <View style={[styles.hotScoreBadge, { backgroundColor: getScoreColor(sc) }]}>
+                        <Text style={[styles.hotScoreBadgeText, { color: getScoreBadgeForeground(sc) }]}>
+                          {getScoreEmoji(sc)} {Math.round(sc)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.hotLeadTier}>{getScoreLabel(sc)}</Text>
+                    <Text style={styles.hotLeadSub} numberOfLines={1}>
+                      {city} · {stage}
                     </Text>
-                  </View>
-                  <Text style={styles.hotLeadSub} numberOfLines={1}>
-                    {city} · {stage}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {isSupabaseConfigured() && digest ? (
+            <View style={styles.digestSection}>
+              <Text style={styles.digestTitle}>{`📋 Today's Priorities`}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+                onPress={() => {
+                  if (digest.firstFollowUpLeadId) {
+                    navigation.navigate("LeadDetail", { leadId: digest.firstFollowUpLeadId });
+                  } else {
+                    navigation.navigate("FollowUps");
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Follow-ups due today"
+              >
+                <Ionicons name="calendar-outline" size={20} color={colors.warning} />
+                <View style={styles.digestRowBody}>
+                  <Text style={styles.digestRowTitle}>Follow-ups due today</Text>
+                  <Text style={styles.digestRowSub} numberOfLines={2}>
+                    {digest.followUpsDueTodayCount === 0
+                      ? "None scheduled for today"
+                      : `${digest.followUpsDueTodayCount} due${digest.firstFollowUpLeadName ? ` · ${digest.firstFollowUpLeadName}` : ""
+                      }`}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
 
-        {isSupabaseConfigured() && digest ? (
-          <View style={styles.digestSection}>
-            <Text style={styles.digestTitle}>{`📋 Today's Priorities`}</Text>
-            <Pressable
-              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
-              onPress={() => {
-                if (digest.firstFollowUpLeadId) {
-                  navigation.navigate("LeadDetail", { leadId: digest.firstFollowUpLeadId });
-                } else {
-                  navigation.navigate("FollowUps");
-                }
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Follow-ups due today"
-            >
-              <Ionicons name="calendar-outline" size={20} color={colors.warning} />
-              <View style={styles.digestRowBody}>
-                <Text style={styles.digestRowTitle}>Follow-ups due today</Text>
-                <Text style={styles.digestRowSub} numberOfLines={2}>
-                  {digest.followUpsDueTodayCount === 0
-                    ? "None scheduled for today"
-                    : `${digest.followUpsDueTodayCount} due${digest.firstFollowUpLeadName ? ` · ${digest.firstFollowUpLeadName}` : ""
-                    }`}
-                </Text>
+              <Pressable
+                style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+                onPress={() => {
+                  if (digest.firstHotLeadId) {
+                    navigation.navigate("LeadDetail", { leadId: digest.firstHotLeadId });
+                  } else {
+                    navigation.navigate("Inbox");
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Hot leads not contacted today"
+              >
+                <Ionicons name="flame-outline" size={20} color={colors.danger} />
+                <View style={styles.digestRowBody}>
+                  <Text style={styles.digestRowTitle}>Hot leads (score over 70) — not touched today</Text>
+                  <Text style={styles.digestRowSub} numberOfLines={2}>
+                    {digest.hotNotContactedTodayCount === 0
+                      ? "You’re on top of it"
+                      : `${digest.hotNotContactedTodayCount} lead${digest.hotNotContactedTodayCount === 1 ? "" : "s"
+                      }${digest.firstHotLeadName ? ` · ${digest.firstHotLeadName}` : ""}`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+                onPress={() => {
+                  if (digest.firstAtRiskLeadId) {
+                    navigation.navigate("LeadDetail", { leadId: digest.firstAtRiskLeadId });
+                  } else {
+                    navigation.navigate("Pipeline");
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Pipeline value at risk"
+              >
+                <Ionicons name="alert-circle-outline" size={20} color={colors.primary} />
+                <View style={styles.digestRowBody}>
+                  <Text style={styles.digestRowTitle}>Pipeline at risk (7+ days idle)</Text>
+                  <Text style={styles.digestRowSub} numberOfLines={2}>
+                    {digest.pipelineAtRiskCount === 0
+                      ? "No stale open deals"
+                      : `${digest.pipelineAtRiskCount} lead${digest.pipelineAtRiskCount === 1 ? "" : "s"
+                      } · ${formatPkrEnIn(digest.pipelineAtRiskPkr)}`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={styles.pipelineValueSection}>
+            <Text style={styles.pipelineValueTitle}>PIPELINE VALUE 💰</Text>
+            <View style={styles.pipelineValueBox}>
+              {pipelineOpenTotal > 0 ? (
+                <View style={styles.pipelineMiniBars}>
+                  {pipelineValueBars.map((row) => (
+                    <View key={row.key} style={styles.pipelineMiniBarBlock}>
+                      <View style={styles.pipelineMiniBarTrack}>
+                        <View
+                          style={[
+                            styles.pipelineMiniBarFill,
+                            { width: `${row.pct}%`, backgroundColor: row.fill },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.pipelineMiniBarMeta}>
+                        {row.label} · {row.pct}% of open value
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <View style={styles.pipelineValueRow}>
+                <Text style={styles.pipelineValueKey}>New:</Text>
+                <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.new)}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
-              onPress={() => {
-                if (digest.firstHotLeadId) {
-                  navigation.navigate("LeadDetail", { leadId: digest.firstHotLeadId });
-                } else {
-                  navigation.navigate("Inbox");
-                }
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Hot leads not contacted today"
-            >
-              <Ionicons name="flame-outline" size={20} color={colors.danger} />
-              <View style={styles.digestRowBody}>
-                <Text style={styles.digestRowTitle}>Hot leads (score over 70) — not touched today</Text>
-                <Text style={styles.digestRowSub} numberOfLines={2}>
-                  {digest.hotNotContactedTodayCount === 0
-                    ? "You’re on top of it"
-                    : `${digest.hotNotContactedTodayCount} lead${digest.hotNotContactedTodayCount === 1 ? "" : "s"
-                    }${digest.firstHotLeadName ? ` · ${digest.firstHotLeadName}` : ""}`}
-                </Text>
+              <View style={styles.pipelineValueRow}>
+                <Text style={styles.pipelineValueKey}>Contacted:</Text>
+                <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.contacted)}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
-              onPress={() => {
-                if (digest.firstAtRiskLeadId) {
-                  navigation.navigate("LeadDetail", { leadId: digest.firstAtRiskLeadId });
-                } else {
-                  navigation.navigate("Pipeline");
-                }
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Pipeline value at risk"
-            >
-              <Ionicons name="alert-circle-outline" size={20} color={colors.primary} />
-              <View style={styles.digestRowBody}>
-                <Text style={styles.digestRowTitle}>Pipeline at risk (7+ days idle)</Text>
-                <Text style={styles.digestRowSub} numberOfLines={2}>
-                  {digest.pipelineAtRiskCount === 0
-                    ? "No stale open deals"
-                    : `${digest.pipelineAtRiskCount} lead${digest.pipelineAtRiskCount === 1 ? "" : "s"
-                    } · ${formatPkrEnIn(digest.pipelineAtRiskPkr)}`}
-                </Text>
+              <View style={styles.pipelineValueRow}>
+                <Text style={styles.pipelineValueKey}>Qualified:</Text>
+                <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.qualified)}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        <View style={styles.pipelineValueSection}>
-          <Text style={styles.pipelineValueTitle}>PIPELINE VALUE 💰</Text>
-          <View style={styles.pipelineValueBox}>
-            <View style={styles.pipelineValueRow}>
-              <Text style={styles.pipelineValueKey}>New:</Text>
-              <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.new)}</Text>
-            </View>
-            <View style={styles.pipelineValueRow}>
-              <Text style={styles.pipelineValueKey}>Contacted:</Text>
-              <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.contacted)}</Text>
-            </View>
-            <View style={styles.pipelineValueRow}>
-              <Text style={styles.pipelineValueKey}>Qualified:</Text>
-              <Text style={styles.pipelineValueAmt}>{formatPkrEnIn(pvRow.qualified)}</Text>
-            </View>
-            <View style={styles.pipelineValueDivider} />
-            <View style={styles.pipelineValueRow}>
-              <Text style={styles.pipelineValueTotalKey}>Total:</Text>
-              <Text style={styles.pipelineValueTotalAmt}>{formatPkrEnIn(pipelineOpenTotal)}</Text>
-            </View>
-            <Text style={styles.pipelineValueHint}>
-              Open pipeline (new + contacted + qualified) · {pipelineDealCurrency}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.kpiBlock}>
-          <Text style={styles.kpiSectionLabel}>Overview</Text>
-          <View style={styles.kpiRow}>
-            <KpiCard
-              title="Total Leads"
-              value={String(safeTotals.totalLeads)}
-              icon="people-outline"
-              accent={kpi.total.accent}
-              bottomAccent={kpi.total.bottom}
-              trend={totalLeadsTrend}
-              trendSentiment="more_is_good"
-            />
-            <KpiCard
-              title="New Today"
-              value={String(safeTotals.leadsToday)}
-              icon="sparkles-outline"
-              accent={kpi.newToday.accent}
-              bottomAccent={kpi.newToday.bottom}
-              trend={newTodayTrend}
-              trendSentiment="more_is_good"
-            />
-          </View>
-          <View style={styles.kpiRow}>
-            <View style={styles.kpiHalf}>
-              <KpiCard
-                title="Follow-ups Due"
-                value={String(safeTotals.followUpsDue)}
-                icon="alarm-outline"
-                accent={kpi.followUps.accent}
-                bottomAccent={kpi.followUps.bottom}
-                trend={followUpsTrend}
-                trendSentiment="more_is_bad"
-              />
-            </View>
-            <View style={styles.kpiHalf}>
-              <KpiCard
-                title="Conversion"
-                value={conversionValueLabel}
-                icon="trending-up-outline"
-                accent={kpi.conversion.accent}
-                bottomAccent={kpi.conversion.bottom}
-                trend={conversionTrend}
-                trendSentiment="more_is_good"
-              />
-              <Text style={styles.kpiConversionHint}>
-                Win rate among closed deals: won ÷ (won + lost) × 100. N/A when no leads are won or lost yet.
+              <View style={styles.pipelineValueDivider} />
+              <View style={styles.pipelineValueRow}>
+                <Text style={styles.pipelineValueTotalKey}>Total:</Text>
+                <Text style={styles.pipelineValueTotalAmt}>{formatPkrEnIn(pipelineOpenTotal)}</Text>
+              </View>
+              <Text style={styles.pipelineValueHint}>
+                Open pipeline (new + contacted + qualified) · {pipelineDealCurrency}
               </Text>
             </View>
           </View>
-          <Text style={styles.kpiHint}>Leads with a scheduled follow-up that is overdue</Text>
-        </View>
 
-        <PipelineOverviewSection
-          byStatus={byStatus}
-          valueByStage={pipelineValueByStage}
-          currency={pipelineDealCurrency}
-        />
-
-        <LeadSourcesSection bySource={bySource} />
-
-        <Text style={styles.sectionLabel}>Charts</Text>
-        <DashboardCharts
-          chartData={chartPoints}
-          byStatus={byStatus}
-          bySource={bySource}
-          chartsEnabled={chartsEnabled}
-        />
-
-        <DashboardInsights
-          data={{
-            followUpsDue: safeTotals.followUpsDue,
-            conversionRate: rate,
-            totalLeads: safeTotals.totalLeads,
-            leadsToday: safeTotals.leadsToday,
-            newCount: byStatus.new,
-            contactedCount: byStatus.contacted,
-          }}
-        />
-
-        <Card>
-          <Text style={styles.cardEyebrow}>Activity</Text>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>AI replies (30d)</Text>
-            <Text style={styles.metricValue}>{aiReplies30d ?? 0}</Text>
+          <View style={styles.kpiBlock}>
+            <Text style={styles.kpiSectionLabel}>Overview</Text>
+            <View style={styles.kpiRow}>
+              <KpiCard
+                title="Total Leads"
+                value={String(safeTotals.totalLeads)}
+                icon="people-outline"
+                accent={kpi.total.accent}
+                bottomAccent={kpi.total.bottom}
+                trend={totalLeadsTrend}
+                trendSentiment="more_is_good"
+              />
+              <KpiCard
+                title="New Today"
+                value={String(safeTotals.leadsToday)}
+                icon="sparkles-outline"
+                accent={kpi.newToday.accent}
+                bottomAccent={kpi.newToday.bottom}
+                trend={newTodayTrend}
+                trendSentiment="more_is_good"
+              />
+            </View>
+            <View style={styles.kpiRow}>
+              <View style={styles.kpiHalf}>
+                <KpiCard
+                  title="Follow-ups Due"
+                  value={String(safeTotals.followUpsDue)}
+                  icon="alarm-outline"
+                  accent={kpi.followUps.accent}
+                  bottomAccent={kpi.followUps.bottom}
+                  trend={followUpsTrend}
+                  trendSentiment="more_is_bad"
+                />
+              </View>
+              <View style={styles.kpiHalf}>
+                <KpiCard
+                  title="Conversion"
+                  value={conversionValueLabel}
+                  icon="trending-up-outline"
+                  accent={kpi.conversion.accent}
+                  bottomAccent={kpi.conversion.bottom}
+                  trend={conversionTrend}
+                  trendSentiment="more_is_good"
+                />
+                <Text style={styles.kpiConversionHint}>
+                  Win rate among closed deals: won ÷ (won + lost) × 100. N/A when no leads are won or lost yet.
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.kpiHint}>Leads with a scheduled follow-up that is overdue</Text>
           </View>
-        </Card>
 
-        <Text style={styles.sectionLabel}>Go to</Text>
-        <View style={styles.quickGrid}>
-          <QuickLink label="Inbox" onPress={() => navigation.navigate("Inbox")} />
-          {isManager ? <QuickLink label="Assignment" onPress={() => navigation.navigate("Assignment")} /> : null}
-          <QuickLink label="Follow-ups" onPress={() => navigation.navigate("FollowUps")} />
-          <QuickLink label="Analytics" onPress={() => navigation.navigate("Analytics")} />
-          <QuickLink label="Settings" onPress={() => navigation.navigate("Settings")} />
-        </View>
+          <PipelineOverviewSection
+            byStatus={byStatus}
+            valueByStage={pipelineValueByStage}
+            currency={pipelineDealCurrency}
+          />
+
+          <LeadSourcesSection bySource={bySource} />
+
+          <Text style={styles.sectionLabel}>Charts</Text>
+          <DashboardCharts
+            chartData={chartPoints}
+            byStatus={byStatus}
+            bySource={bySource}
+            chartsEnabled={chartsEnabled}
+          />
+
+          <DashboardInsights
+            data={{
+              followUpsDue: safeTotals.followUpsDue,
+              conversionRate: rate,
+              totalLeads: safeTotals.totalLeads,
+              leadsToday: safeTotals.leadsToday,
+              newCount: byStatus.new,
+              contactedCount: byStatus.contacted,
+            }}
+          />
+
+          <Card>
+            <Text style={styles.cardEyebrow}>Activity</Text>
+            <View style={styles.metricRow}>
+              <Text style={styles.metricLabel}>AI replies (30d)</Text>
+              <Text style={styles.metricValue}>{aiReplies30d ?? 0}</Text>
+            </View>
+          </Card>
+
+          <Text style={styles.sectionLabel}>Go to</Text>
+          <View style={styles.quickGrid}>
+            <QuickLink label="Inbox" onPress={() => navigation.navigate("Inbox")} />
+            {isManager ? <QuickLink label="Assignment" onPress={() => navigation.navigate("Assignment")} /> : null}
+            <QuickLink label="Follow-ups" onPress={() => navigation.navigate("FollowUps")} />
+            <QuickLink label="Analytics" onPress={() => navigation.navigate("Analytics")} />
+            <QuickLink label="Settings" onPress={() => navigation.navigate("Settings")} />
+          </View>
+        </FadeIn>
       </ScrollView>
       <AddLeadFab />
     </View>
@@ -642,6 +704,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   headerTitles: { flex: 1, minWidth: 0 },
+  greeting: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 14,
+    letterSpacing: -0.2,
+  },
   title: { color: colors.text, fontSize: 28, fontWeight: "800" },
   subtitle: { color: colors.textMuted, marginTop: 4, marginBottom: 12, fontSize: 15 },
   refreshBtn: {
@@ -688,11 +757,17 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   hotLeadCardPressed: { opacity: 0.9 },
-  hotLeadLine: { flexDirection: "row", alignItems: "center", gap: 8 },
-  hotLeadEmoji: { fontSize: 18 },
-  hotLeadScore: { color: colors.primary, fontSize: 16, fontWeight: "800", minWidth: 28 },
+  hotLeadLine: { flexDirection: "row", alignItems: "center", gap: 10, justifyContent: "space-between" },
   hotLeadName: { color: colors.text, fontSize: 16, fontWeight: "700", flex: 1, minWidth: 0 },
-  hotLeadSub: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
+  hotScoreBadge: {
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexShrink: 0,
+  },
+  hotScoreBadgeText: { fontSize: 13, fontWeight: "900" },
+  hotLeadTier: { color: colors.textMuted, fontSize: 12, fontWeight: "700", marginTop: 6 },
+  hotLeadSub: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
   digestSection: { marginBottom: 16 },
   digestTitle: {
     color: colors.text,
@@ -731,6 +806,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 14,
   },
+  pipelineMiniBars: { marginBottom: 14, gap: 10 },
+  pipelineMiniBarBlock: { gap: 6 },
+  pipelineMiniBarTrack: {
+    height: 8,
+    borderRadius: 6,
+    backgroundColor: colors.bg,
+    overflow: "hidden",
+  },
+  pipelineMiniBarFill: { height: 8, borderRadius: 6 },
+  pipelineMiniBarMeta: { color: colors.textMuted, fontSize: 11, fontWeight: "600" },
   pipelineValueRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -820,7 +905,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   quickBtnPressed: { opacity: 0.9 },
-  quickBtnText: { color: colors.primary, fontWeight: "700", fontSize: 15, textAlign: "center" },
+  quickBtnText: { color: colors.brandGreen, fontWeight: "700", fontSize: 15, textAlign: "center" },
   errorCard: { borderColor: colors.warning, marginBottom: 12 },
   errorText: { color: colors.warning, fontSize: 14, lineHeight: 20 },
   errorHint: { color: colors.textMuted, marginTop: 6, fontSize: 13 },

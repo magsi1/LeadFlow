@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import * as Device from "expo-device";
 import { useFocusEffect } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -42,7 +43,8 @@ import { leadDisplayName } from "../lib/safeData";
 import { getSupabaseClient, isSupabaseConfigured } from "../lib/supabaseClient";
 import type { DefaultLeadPriority } from "../lib/appPreferences";
 import { crossPlatformConfirm } from "../lib/crossPlatformConfirm";
-import { mergeAppPreferences, TIMEZONE_OPTIONS } from "../lib/appPreferences";
+import { clearLocalLeadFlowDeviceData } from "../lib/clearLocalAppData";
+import { DEFAULT_APP_PREFERENCES, mergeAppPreferences, TIMEZONE_OPTIONS } from "../lib/appPreferences";
 import { isSuspiciousLeadName } from "../lib/testLeadDetection";
 import { api } from "../services/api";
 import {
@@ -178,7 +180,7 @@ const APP_PREF_PRIORITY_OPTIONS: { label: string; value: DefaultLeadPriority }[]
   { label: "Low", value: "low" },
 ];
 
-export function SettingsScreen({ }: Props) {
+export function SettingsScreen(_props: Props) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
@@ -195,6 +197,12 @@ export function SettingsScreen({ }: Props) {
   const [permStatus, setPermStatus] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [registerMessage, setRegisterMessage] = useState<string | null>(null);
+  const [clearingAllData, setClearingAllData] = useState(false);
+
+  const appVersion =
+    Constants.expoConfig?.version ??
+    (Constants as { manifest?: { version?: string } }).manifest?.version ??
+    "1.0.0";
 
   const [dmLoading, setDmLoading] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -650,6 +658,31 @@ export function SettingsScreen({ }: Props) {
 
   const dupExtras = extrasCountWithPrimary(duplicateClusters, primaryPick);
 
+  const onClearAllLocalData = useCallback(() => {
+    if (clearingAllData) return;
+    crossPlatformConfirm(
+      "Clear all local data",
+      "This removes saved preferences, drafts, and caches on this device and signs you out. Leads stored in Supabase are not deleted.",
+      () => {
+        void (async () => {
+          setClearingAllData(true);
+          try {
+            await cancelAllNotifications();
+            await clearLocalLeadFlowDeviceData();
+            useAppPreferencesStore.setState({ ...DEFAULT_APP_PREFERENCES, hydrated: true });
+            await logout();
+            showToast("Local data cleared", "success");
+          } catch (e) {
+            showToast(e instanceof Error ? e.message : "Could not clear data.", "error");
+          } finally {
+            setClearingAllData(false);
+          }
+        })();
+      },
+      "Clear and sign out",
+    );
+  }, [clearingAllData, logout, showToast]);
+
   const onRegisterPush = useCallback(async () => {
     setRegisterMessage(null);
     if (api.demoMode) {
@@ -730,9 +763,9 @@ export function SettingsScreen({ }: Props) {
           <Text style={styles.prefChevron}>▾</Text>
         </Pressable>
 
-        <Text style={[styles.dmSubheading, styles.dmSubheadingSpaced]}>Daily digest notifications</Text>
+        <Text style={[styles.dmSubheading, styles.dmSubheadingSpaced]}>Notification preferences</Text>
         <Text style={styles.prefFieldHint}>
-          Local reminder at 9:00 (device time) with follow-ups, hot leads, and pipeline summary. Requires
+          Daily digest: local 9:00 (device time) with follow-ups, hot leads, and pipeline summary. Requires
           notification permission.
         </Text>
         <View style={styles.digestToggleRow}>
@@ -1341,6 +1374,14 @@ export function SettingsScreen({ }: Props) {
         <Text style={styles.rowMuted}>User id: {user?.id ?? "—"}</Text>
       </Card>
 
+      <Card style={styles.aboutCard}>
+        <Text style={styles.section}>About LeadFlow</Text>
+        <Text style={styles.aboutBody}>
+          LeadFlow is a dark, fast CRM for WhatsApp-first teams: pipeline, follow-ups, and AI-assisted replies in one
+          place. Data syncs through your Supabase workspace.
+        </Text>
+      </Card>
+
       <Card>
         <Text style={styles.section}>Notifications</Text>
         <Text style={styles.row}>{describePushStatus(permStatus, isPhysical)}</Text>
@@ -1368,12 +1409,32 @@ export function SettingsScreen({ }: Props) {
       </Card>
 
       <Pressable
+        style={({ pressed }) => [
+          styles.clearDataBtn,
+          (pressed || clearingAllData) && styles.pressed,
+          clearingAllData && styles.cleanAllBtnDisabled,
+        ]}
+        onPress={onClearAllLocalData}
+        disabled={clearingAllData}
+        accessibilityRole="button"
+        accessibilityLabel="Clear all local data"
+      >
+        {clearingAllData ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.clearDataBtnText}>Clear all local data</Text>
+        )}
+      </Pressable>
+
+      <Pressable
         style={({ pressed }) => [styles.dangerBtn, pressed && styles.pressed]}
         onPress={() => void logout()}
         accessibilityRole="button"
       >
         <Text style={styles.dangerBtnText}>Sign out</Text>
       </Pressable>
+
+      <Text style={styles.versionLine}>LeadFlow Mobile · v{appVersion}</Text>
     </ScrollView>
   );
 }
@@ -1431,7 +1492,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingVertical: 14,
     borderRadius: 10,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brandGreen,
     alignItems: "center",
     minHeight: 48,
     justifyContent: "center",
@@ -1519,6 +1580,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   dangerBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  clearDataBtn: {
+    marginTop: 8,
+    backgroundColor: colors.cardSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingVertical: 16,
+    alignItems: "center",
+    minHeight: 48,
+    justifyContent: "center",
+  },
+  clearDataBtnText: { color: colors.danger, fontWeight: "800", fontSize: 15 },
+  versionLine: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  aboutCard: { marginBottom: 14 },
+  aboutBody: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   hint: { color: colors.textMuted, marginTop: 12, fontSize: 13, lineHeight: 18 },
   pressed: { opacity: 0.85 },
   dmCard: { marginBottom: 14 },

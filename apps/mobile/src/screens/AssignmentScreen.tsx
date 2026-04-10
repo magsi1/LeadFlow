@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Card } from "../components/Card";
-import { LoadingScreen } from "../components/LoadingScreen";
+import { FollowUpsSkeleton } from "../components/FollowUpsSkeleton";
 import { formatLeadStageLabel } from "../lib/dataManagementDuplicates";
 import { filterValidLeadDtos, isLeadNameMissing, leadDisplayName } from "../lib/safeData";
 import { api } from "../services/api";
@@ -68,7 +68,11 @@ export function AssignmentScreen() {
   }, [load]);
 
   if (loading && safeLeads.length === 0) {
-    return <LoadingScreen message="Loading assignments…" />;
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <FollowUpsSkeleton />
+      </View>
+    );
   }
 
   return (

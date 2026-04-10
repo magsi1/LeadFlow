@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brandGreen,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",

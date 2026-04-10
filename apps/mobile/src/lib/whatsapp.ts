@@ -56,9 +56,10 @@ export function buildWhatsAppUrlWithText(digits: string, message: string): strin
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
-async function openWaUrl(url: string, feedback?: WhatsAppFeedback): Promise<void> {
+async function openWaUrl(url: string, feedback?: WhatsAppFeedback): Promise<boolean> {
   try {
     await Linking.openURL(url);
+    return true;
   } catch (e) {
     const detail = e instanceof Error ? e.message : "Install WhatsApp or check your connection.";
     if (feedback) {
@@ -66,6 +67,7 @@ async function openWaUrl(url: string, feedback?: WhatsAppFeedback): Promise<void
     } else {
       Alert.alert("Could not open WhatsApp", detail);
     }
+    return false;
   }
 }
 
@@ -76,7 +78,7 @@ async function openWaUrl(url: string, feedback?: WhatsAppFeedback): Promise<void
 export async function openWhatsAppForPhone(
   rawPhone: string | null | undefined,
   opts?: { countryPrefix?: string | null; feedback?: WhatsAppFeedback },
-): Promise<void> {
+): Promise<boolean> {
   const digits = opts?.countryPrefix
     ? normalizePhoneForWaMeWithPrefix(rawPhone, opts.countryPrefix)
     : normalizePhoneForWaMe(rawPhone);
@@ -84,9 +86,9 @@ export async function openWhatsAppForPhone(
     const msg = "No phone number on file.";
     if (opts?.feedback) opts.feedback.error(msg);
     else Alert.alert(msg);
-    return;
+    return false;
   }
-  await openWaUrl(buildWhatsAppUrl(digits), opts?.feedback);
+  return openWaUrl(buildWhatsAppUrl(digits), opts?.feedback);
 }
 
 /**
@@ -96,9 +98,9 @@ export async function openWhatsAppWithPrefilledText(
   rawPhone: string | null | undefined,
   message: string,
   opts?: { countryPrefix?: string | null; feedback?: WhatsAppFeedback },
-): Promise<void> {
+): Promise<boolean> {
   const trimmed = message.trim();
-  if (!trimmed) return;
+  if (!trimmed) return false;
   const digits = opts?.countryPrefix
     ? normalizePhoneForWaMeWithPrefix(rawPhone, opts.countryPrefix)
     : normalizePhoneForWaMe(rawPhone);
@@ -106,7 +108,7 @@ export async function openWhatsAppWithPrefilledText(
     const msg = "No phone number on file.";
     if (opts?.feedback) opts.feedback.error(msg);
     else Alert.alert(msg);
-    return;
+    return false;
   }
-  await openWaUrl(buildWhatsAppUrlWithText(digits, trimmed), opts?.feedback);
+  return openWaUrl(buildWhatsAppUrlWithText(digits, trimmed), opts?.feedback);
 }

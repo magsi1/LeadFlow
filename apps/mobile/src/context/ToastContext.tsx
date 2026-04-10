@@ -39,7 +39,7 @@ function toastAccent(type: ToastType): string {
     case "info":
       return colors.primary;
     case "success":
-      return colors.success;
+      return colors.brandGreen;
     case "error":
       return colors.danger;
     default:
@@ -91,7 +91,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         style={[
           styles.host,
           {
-            bottom: 16 + insets.bottom,
+            top: 12 + insets.top,
+            left: 12 + insets.left,
             right: 12 + insets.right,
           },
         ]}
@@ -146,10 +147,8 @@ const styles = StyleSheet.create({
   host: {
     position: "absolute",
     zIndex: 9999,
-    maxWidth: 380,
-    alignSelf: "flex-end",
     gap: 8,
-    flexDirection: "column-reverse",
+    flexDirection: "column",
   },
   toast: {
     flexDirection: "row",

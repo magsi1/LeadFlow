@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Card } from "../components/Card";
 import { LeadAvatar } from "../components/LeadAvatar";
-import { LoadingScreen } from "../components/LoadingScreen";
+import { FollowUpsSkeleton } from "../components/FollowUpsSkeleton";
 import { SetFollowUpButton } from "../components/SetFollowUpButton";
 import { useToast } from "../context/ToastContext";
 import {
@@ -287,13 +287,16 @@ export function FollowUpsScreen({ navigation }: Props) {
         showToast("No phone number on file.", "error");
         return;
       }
-      void openWhatsAppForPhone(lead.phone, waOpts);
+      void (async () => {
+        const ok = await openWhatsAppForPhone(lead.phone, waOpts);
+        if (ok) showToast("WhatsApp opened", "success");
+      })();
     },
     [waOpts, showToast],
   );
 
   if (loading && items.length === 0) {
-    return <LoadingScreen message="Loading follow-ups…" />;
+    return <FollowUpsSkeleton />;
   }
 
   return (
@@ -330,10 +333,7 @@ export function FollowUpsScreen({ navigation }: Props) {
 
       {!error && !hasAnyInSections ? (
         <View style={styles.allCaughtUpWrap}>
-          <Text style={styles.allCaughtUpEmoji} accessibilityLabel="Celebration">
-            🎉
-          </Text>
-          <Text style={styles.allCaughtUpTitle}>You're all caught up!</Text>
+          <Text style={styles.allCaughtUpTitle}>You're all caught up! 🎉</Text>
           <Text style={styles.allCaughtUpSubtitle}>No follow-ups overdue or scheduled</Text>
         </View>
       ) : null}
@@ -578,8 +578,7 @@ const styles = StyleSheet.create({
   },
   sectionEmptyOverdue: { color: colors.textMuted, fontSize: 14, fontStyle: "italic", marginBottom: 8, paddingLeft: 2 },
   allCaughtUpWrap: { alignItems: "center", marginTop: 60 },
-  allCaughtUpEmoji: { fontSize: 40 },
-  allCaughtUpTitle: { color: colors.text, fontSize: 20, fontWeight: "700", marginTop: 12 },
+  allCaughtUpTitle: { color: colors.text, fontSize: 20, fontWeight: "700", textAlign: "center" },
   allCaughtUpSubtitle: { color: colors.textMuted, fontSize: 14, marginTop: 8 },
   leadCard: {
     marginBottom: 12,

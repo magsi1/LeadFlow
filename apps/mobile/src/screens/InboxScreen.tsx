@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddLeadFab } from "../components/AddLeadFab";
 import { Card } from "../components/Card";
+import { InboxListSkeleton } from "../components/InboxListSkeleton";
 import { LeadAvatar } from "../components/LeadAvatar";
 import { LeadCardAiReplyButton } from "../components/LeadCardAiReplyButton";
 import { SetFollowUpButton } from "../components/SetFollowUpButton";
@@ -168,7 +169,12 @@ export function InboxScreen({ navigation }: Props) {
           <View style={styles.actionRow}>
             <Pressable
               style={({ pressed }) => [styles.iconBtn, !hasPhone && styles.iconBtnMuted, pressed && styles.pressed]}
-              onPress={() => void openWhatsAppForPhone(lead.phone, waOpts)}
+              onPress={() =>
+                void (async () => {
+                  const ok = await openWhatsAppForPhone(lead.phone, waOpts);
+                  if (ok) showToast("WhatsApp opened", "success");
+                })()
+              }
               accessibilityLabel="WhatsApp"
             >
               <Ionicons name="logo-whatsapp" size={22} color={hasPhone ? "#25D366" : colors.textMuted} />
@@ -202,7 +208,7 @@ export function InboxScreen({ navigation }: Props) {
         </Card>
       );
     },
-    [navigation, onFollowUpSaved, onPressAiReply, waOpenOpts, waOpts],
+    [navigation, onFollowUpSaved, onPressAiReply, showToast, waOpenOpts, waOpts],
   );
 
   const keyExtractor = useCallback((item: InboxLeadRow, index: number) => {
@@ -238,10 +244,12 @@ export function InboxScreen({ navigation }: Props) {
         windowSize={7}
         removeClippedSubviews
         ListEmptyComponent={
-          !loading && !error ? (
+          loading ? (
+            <InboxListSkeleton />
+          ) : !error ? (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyEmoji}>📬</Text>
-              <Text style={styles.emptyTitle}>Your inbox is empty</Text>
+              <Text style={styles.emptyTitle}>No leads yet. Add your first lead!</Text>
               <Text style={styles.emptySubtitle}>New leads will appear here</Text>
             </View>
           ) : null

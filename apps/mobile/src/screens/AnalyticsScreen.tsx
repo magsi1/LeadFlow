@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
 import { Card } from "../components/Card";
 import { LeadSourcesSection } from "../components/LeadSourcesSection";
-import { LoadingScreen } from "../components/LoadingScreen";
+import { DashboardSkeleton } from "../components/DashboardSkeleton";
 import { RevenueByMonthCard } from "../components/RevenueByMonthCard";
 import { formatPkrEnIn } from "../lib/dealValue";
 import { emptyDashboardAnalytics, loadDashboardAnalytics } from "../lib/dashboardAnalytics";
@@ -147,7 +147,11 @@ export function AnalyticsScreen() {
   }, [load, setAnalytics]);
 
   if (loading && !analytics) {
-    return <LoadingScreen message="Loading analytics…" />;
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <DashboardSkeleton />
+      </View>
+    );
   }
 
   const totals = analytics?.totals ?? emptyDashboard.totals;

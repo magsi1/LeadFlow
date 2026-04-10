@@ -77,7 +77,7 @@ function MainTabs() {
           borderTopColor: colors.border,
           paddingTop: 4,
         },
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.brandGreen,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
@@ -186,7 +186,13 @@ export default function App() {
           <LoadingScreen message="Restoring session…" />
         ) : (
           <NavigationContainer theme={navTheme} fallback={<LoadingScreen message="Loading…" />}>
-            <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.bg },
+                animation: "slide_from_right",
+              }}
+            >
               {!user ? (
                 <Stack.Screen name="Login" component={LoginScreen} />
               ) : (

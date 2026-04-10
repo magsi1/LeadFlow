@@ -579,10 +579,11 @@ export function LeadDetailScreen({ route, navigation }: Props) {
 
       const openWaWith = async (text: string) => {
         if (!text.trim()) return;
-        await openWhatsAppWithPrefilledText(formatPhone(current.phone) ?? undefined, text, {
+        const ok = await openWhatsAppWithPrefilledText(formatPhone(current.phone) ?? undefined, text, {
           ...waOpenOpts,
           feedback: waFeedback,
         });
+        if (ok) showToast("WhatsApp opened", "success");
       };
 
       if (!forceRegenerate) {
@@ -661,7 +662,7 @@ export function LeadDetailScreen({ route, navigation }: Props) {
         }
       });
     },
-    [lead, loadSavedReplies, sessionToken, waOpenOpts, waFeedback],
+    [lead, loadSavedReplies, sessionToken, waOpenOpts, waFeedback, showToast],
   );
 
   const copyReply = useCallback(async () => {
@@ -677,11 +678,12 @@ export function LeadDetailScreen({ route, navigation }: Props) {
   }, [suggestedReply, showToast]);
 
   const sendViaWhatsApp = useCallback(async () => {
-    await openWhatsAppWithPrefilledText(formatPhone(lead?.phone) ?? undefined, suggestedReply, {
+    const ok = await openWhatsAppWithPrefilledText(formatPhone(lead?.phone) ?? undefined, suggestedReply, {
       ...waOpenOpts,
       feedback: waFeedback,
     });
-  }, [suggestedReply, lead?.phone, waOpenOpts, waFeedback]);
+    if (ok) showToast("WhatsApp opened", "success");
+  }, [suggestedReply, lead?.phone, waOpenOpts, waFeedback, showToast]);
 
   const onFollowUpSavedDetail = useCallback(
     (iso: string) => {
@@ -1154,7 +1156,8 @@ export function LeadDetailScreen({ route, navigation }: Props) {
       showToast("Add a phone number to send a WhatsApp message.", "error");
       return;
     }
-    await openWhatsAppWithPrefilledText(phone, msg, { ...waOpenOpts, feedback: waFeedback });
+    const ok = await openWhatsAppWithPrefilledText(phone, msg, { ...waOpenOpts, feedback: waFeedback });
+    if (ok) showToast("WhatsApp opened", "success");
     setTemplatesModalOpen(false);
   }, [waComposeText, lead?.phone, waOpenOpts, waFeedback, showToast]);
 
@@ -1252,7 +1255,15 @@ export function LeadDetailScreen({ route, navigation }: Props) {
               pressed && styles.quickPressed,
               !formattedPhone && styles.quickBtnDisabled,
             ]}
-            onPress={() => void openWhatsAppForPhone(formattedPhone ?? undefined, { ...waOpenOpts, feedback: waFeedback })}
+            onPress={() =>
+              void (async () => {
+                const ok = await openWhatsAppForPhone(formattedPhone ?? undefined, {
+                  ...waOpenOpts,
+                  feedback: waFeedback,
+                });
+                if (ok) showToast("WhatsApp opened", "success");
+              })()
+            }
             disabled={!formattedPhone}
             accessibilityRole="button"
             accessibilityLabel="Open WhatsApp"

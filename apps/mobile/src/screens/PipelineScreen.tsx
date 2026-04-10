@@ -66,9 +66,12 @@ import {
   type ChatSearchFilters,
   type GroupedChatSearch,
 } from "../lib/chatSearch";
+import { formatDaysInStageShort } from "../lib/leadStageDays";
+import { pipelineStageLeftBorderColor } from "../lib/stageVisuals";
 import {
   calculateLeadScore,
   coerceLeadScoreNumber,
+  getScoreBadgeForeground,
   getScoreColor,
   getScoreEmoji,
   inboxLeadToScoreInput,
@@ -151,11 +154,11 @@ const MIN_SCORE_OPTIONS: { value: "all" | "40" | "60" | "80"; label: string }[] 
 
 /** Includes scoring + deal columns when migrations are applied. */
 const LEADS_SELECT_FULL =
-  "id,name,phone,email,source,source_channel,status,priority,notes,city,created_at,next_follow_up_at,lead_score,score_reasons,deal_value,deal_currency";
+  "id,name,phone,email,source,source_channel,status,priority,notes,city,created_at,updated_at,next_follow_up_at,lead_score,score_reasons,deal_value,deal_currency";
 
 /** Older DBs without `lead_score` / `deal_value` columns. */
 const LEADS_SELECT_FALLBACK =
-  "id,name,phone,email,source,source_channel,status,priority,notes,city,created_at,next_follow_up_at";
+  "id,name,phone,email,source,source_channel,status,priority,notes,city,created_at,updated_at,next_follow_up_at";
 
 function isMissingColumnOrSchemaError(message: string | undefined): boolean {
   const m = (message ?? "").toLowerCase();
@@ -311,6 +314,26 @@ function PipelineColumnEmptyState() {
     <View style={styles.emptyStageBox}>
       <Ionicons name="layers-outline" size={26} color={colors.textMuted} style={styles.emptyStageIcon} />
       <Text style={styles.emptyStageLabel}>No leads in this stage</Text>
+    </View>
+  );
+}
+
+function PipelineNoLeadsYet({ onAdd }: { onAdd: () => void }) {
+  return (
+    <View style={styles.noLeadsYetWrap}>
+      <Text style={styles.noLeadsYetArt} accessibilityLabel="">
+        📋
+      </Text>
+      <Text style={styles.noLeadsYetTitle}>No leads yet. Add your first lead!</Text>
+      <Text style={styles.noLeadsYetSub}>Your pipeline will show up here as cards you can move and message.</Text>
+      <Pressable
+        onPress={onAdd}
+        style={({ pressed }) => [styles.noLeadsYetFab, pressed && styles.noLeadsYetFabPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Add your first lead"
+      >
+        <Ionicons name="add" size={28} color={colors.text} />
+      </Pressable>
     </View>
   );
 }
@@ -842,6 +865,7 @@ export function PipelineScreen({ navigation }: Props) {
     MIN_SCORE_OPTIONS.find((o) => o.value === minScoreFilter)?.label ?? "All";
 
   const initialLoading = loading && leads.length === 0;
+  const showPipelineNoLeads = !initialLoading && searchMode === "leads" && leads.length === 0;
 
   const hasActiveSearchOrFilter =
     searchQuery.trim().length > 0 ||
@@ -969,6 +993,12 @@ export function PipelineScreen({ navigation }: Props) {
     },
     [navigation],
   );
+
+  const goAddLead = useCallback(() => {
+    const parent = navigation.getParent();
+    if (parent) parent.navigate("AddLead" as never);
+    else navigation.navigate("AddLead" as never);
+  }, [navigation]);
 
   const onFollowUpSaved = useCallback((leadId: string, iso: string) => {
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, next_follow_up_at: iso } : l)));
@@ -1305,6 +1335,8 @@ export function PipelineScreen({ navigation }: Props) {
             </View>
           ))}
         </ScrollView>
+      ) : showPipelineNoLeads ? (
+        <PipelineNoLeadsYet onAdd={goAddLead} />
       ) : searchMode === "chats" ? (
         <View style={styles.chatSearchShell}>
           <ChatSearchResultsPanel
@@ -1373,30 +1405,36 @@ export function PipelineScreen({ navigation }: Props) {
                     const closedColumnTestLike = col.id === "closed" && isTestLikeLeadName(lead.name);
                     const leadScore = leadScoreSortKey(lead);
                     const dealAmount = coerceDealValue(lead.deal_value);
+                    const stageBorder = pipelineStageLeftBorderColor(lead.status);
+                    const daysInStage = formatDaysInStageShort(lead);
                     return (
                       <View style={styles.cardWrap}>
                         <Card
                           style={[
                             styles.pipelineCard,
+                            { borderLeftWidth: 4, borderLeftColor: stageBorder },
                             closedColumnTestLike && styles.pipelineCardTestLike,
                             styles.pipelineCardRelative,
                           ]}
                         >
-                          {leadScore > 0 ? (
-                            <View
-                              style={[styles.scoreBadge, { backgroundColor: getScoreColor(leadScore) }]}
-                              pointerEvents="none"
+                          <View
+                            style={[styles.scoreBadge, { backgroundColor: getScoreColor(leadScore) }]}
+                            pointerEvents="none"
+                          >
+                            <Text
+                              style={[
+                                styles.scoreBadgeText,
+                                { color: getScoreBadgeForeground(leadScore) },
+                              ]}
                             >
-                              <Text style={styles.scoreBadgeText}>
-                                {getScoreEmoji(leadScore)} {Math.round(leadScore)}
-                              </Text>
-                            </View>
-                          ) : null}
+                              {getScoreEmoji(leadScore)} {Math.round(leadScore)}
+                            </Text>
+                          </View>
                           <Pressable
                             onPress={() => onCardPress(lead)}
                             style={({ pressed }) => [
                               styles.cardBody,
-                              leadScore > 0 && styles.cardBodyWithScoreBadge,
+                              styles.cardBodyWithScoreBadge,
                               pressed && styles.cardBodyPressed,
                             ]}
                             disabled={busy}
@@ -1422,6 +1460,11 @@ export function PipelineScreen({ navigation }: Props) {
                             <Text style={styles.cardPriority} numberOfLines={1}>
                               Priority: {formatLeadPriorityDisplay(lead.priority)}
                             </Text>
+                            {daysInStage ? (
+                              <Text style={styles.daysInStage} numberOfLines={1}>
+                                {daysInStage} in stage
+                              </Text>
+                            ) : null}
                             {dealAmount > 0 ? (
                               <Text
                                 style={{ color: colors.success, fontSize: 13, fontWeight: "700", marginTop: 4 }}
@@ -1498,7 +1541,12 @@ export function PipelineScreen({ navigation }: Props) {
                                   !hasPhone && styles.actionBtnMuted,
                                   pressed && styles.actionBtnPressed,
                                 ]}
-                                onPress={() => void openWhatsAppForPhone(lead.phone, waOpts)}
+                                onPress={() =>
+                                  void (async () => {
+                                    const ok = await openWhatsAppForPhone(lead.phone, waOpts);
+                                    if (ok) showToast("WhatsApp opened", "success");
+                                  })()
+                                }
                                 disabled={busy}
                                 accessibilityRole="button"
                                 accessibilityLabel="WhatsApp"
@@ -2431,11 +2479,54 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scoreBadgeText: {
-    color: "#fff",
     fontSize: 11,
     fontWeight: "800",
     textAlign: "center",
   },
+  daysInStage: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  noLeadsYetWrap: {
+    flex: 1,
+    minHeight: 280,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noLeadsYetArt: { fontSize: 56, marginBottom: 12 },
+  noLeadsYetTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  noLeadsYetSub: {
+    color: colors.textMuted,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  noLeadsYetFab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.brandGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noLeadsYetFabPressed: { opacity: 0.9 },
   cardBody: {
     paddingBottom: 4,
     flexShrink: 0,
