@@ -10,11 +10,15 @@ export function normalizeFollowUpLocalDate(d: Date): Date {
   return x;
 }
 
-export async function updateLeadNextFollowUpAt(leadId: string, pickedDate: Date): Promise<string> {
+export async function updateLeadNextFollowUpAt(
+  leadId: string,
+  pickedDate: Date,
+  options?: { preserveTime?: boolean },
+): Promise<string> {
   if (!isSupabaseConfigured()) {
     throw new Error(supabaseEnvError ?? "Supabase is not configured.");
   }
-  const when = normalizeFollowUpLocalDate(pickedDate);
+  const when = options?.preserveTime ? new Date(pickedDate.getTime()) : normalizeFollowUpLocalDate(pickedDate);
   const iso = when.toISOString();
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("leads").update({ next_follow_up_at: iso }).eq("id", leadId);

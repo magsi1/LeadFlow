@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { Card } from "../components/Card";
 import { LoadingScreen } from "../components/LoadingScreen";
-import { SetFollowUpButton } from "../components/SetFollowUpButton";
+import { SetFollowUpButton, type OpenFollowUpPickerOptions } from "../components/SetFollowUpButton";
 import { useToast } from "../context/ToastContext";
 import {
   calculateLeadScore,
@@ -89,6 +89,58 @@ type LeadMessageRow = {
   message: string;
   sent_at: string;
 };
+
+type FollowUpAiSuggestion = {
+  action: string;
+  timing: string;
+  channel: string;
+  emoji: string;
+  dueAtIso: string;
+};
+
+function staticFollowUpSuggestions(): FollowUpAiSuggestion[] {
+  const todayPm = new Date();
+  todayPm.setHours(15, 0, 0, 0);
+  const tomorrowAm = new Date();
+  tomorrowAm.setDate(tomorrowAm.getDate() + 1);
+  tomorrowAm.setHours(10, 0, 0, 0);
+  const inTwoDays = new Date();
+  inTwoDays.setDate(inTwoDays.getDate() + 2);
+  inTwoDays.setHours(11, 0, 0, 0);
+  const thisWeek = new Date();
+  thisWeek.setDate(thisWeek.getDate() + 4);
+  thisWeek.setHours(10, 0, 0, 0);
+  return [
+    {
+      action: "Call to introduce yourself",
+      timing: "Tomorrow 10am",
+      channel: "Call",
+      emoji: "📞",
+      dueAtIso: tomorrowAm.toISOString(),
+    },
+    {
+      action: "Send a quick WhatsApp check-in",
+      timing: "Today 3pm",
+      channel: "WhatsApp",
+      emoji: "💬",
+      dueAtIso: todayPm.toISOString(),
+    },
+    {
+      action: "Follow up on your last conversation",
+      timing: "In 2 days",
+      channel: "WhatsApp",
+      emoji: "💬",
+      dueAtIso: inTwoDays.toISOString(),
+    },
+    {
+      action: "Schedule an on-site visit",
+      timing: "This week",
+      channel: "Visit",
+      emoji: "🏠",
+      dueAtIso: thisWeek.toISOString(),
+    },
+  ];
+}
 
 function parseActivitySubtitle(a: ActivityRow): { title: string; subtitle?: string } {
   const t = (a.type ?? "").toLowerCase();
@@ -276,6 +328,12 @@ export function LeadDetailScreen({ route, navigation }: Props) {
   const [scoreExplainLoading, setScoreExplainLoading] = useState(false);
   const [scoreExplainBody, setScoreExplainBody] = useState<string | null>(null);
   const [scoreExplainErr, setScoreExplainErr] = useState<string | null>(null);
+
+  const [followUpSuggestOpen, setFollowUpSuggestOpen] = useState(false);
+  const [followUpSuggestLoading, setFollowUpSuggestLoading] = useState(false);
+  const [followUpSuggestErr, setFollowUpSuggestErr] = useState<string | null>(null);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<FollowUpAiSuggestion[]>([]);
+  const followUpPickerRef = useRef<(opts?: OpenFollowUpPickerOptions) => void>(() => undefined);
 
   const { showToast } = useToast();
   const bumpLeadsDataRevision = useAppStore((s) => s.bumpLeadsDataRevision);
@@ -643,6 +701,138 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     };
   }, [lead]);
 
+  const lastContactDate = useMemo(() => {
+    if (!chatMessages.length) return null;
+    let best = "";
+    for (const m of chatMessages) {
+      const s = (m.sent_at ?? "").trim();
+      if (!s) continue;
+      if (!best || s > best) best = s;
+    }
+    return best || null;
+  }, [chatMessages]);
+
+  const leadDataForSuggestions = useMemo(() => {
+    if (!lead) return null;
+    const dealVal = coerceDealValue(lead.deal_value);
+    return {
+      name: leadDisplayName(lead.name),
+      score: leadScoring.score,
+      stage: formatLeadStageLabel(lead.status),
+      priority: formatLeadPriorityDisplay(lead.priority),
+      hasPhone: !!lead.phone?.trim(),
+      hasDealValue: dealVal > 0,
+      source: getSourceLabel(lead.source_channel ?? lead.source),
+      notesPreview: lead.notes?.trim().slice(0, 200) ?? "",
+      nextFollowUpAt: lead.next_follow_up_at,
+    };
+  }, [lead, leadScoring.score]);
+
+  const fetchFollowUpSuggestions = useCallback(async () => {
+    setFollowUpSuggestLoading(true);
+    setFollowUpSuggestErr(null);
+    try {
+      if (!isSupabaseConfigured() || !leadDataForSuggestions) {
+        setFollowUpSuggestErr(supabaseEnvError ?? "Supabase is not configured.");
+        setFollowUpSuggestions(staticFollowUpSuggestions());
+        return;
+      }
+      const supabaseClient = getSupabaseClient();
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+      const accessToken = session?.access_token?.trim();
+      if (!accessToken) {
+        setFollowUpSuggestErr("Sign in to load smart suggestions.");
+        setFollowUpSuggestions(staticFollowUpSuggestions());
+        return;
+      }
+      const fnCfg = getSupabaseFunctionFetchConfig();
+      if (!fnCfg) {
+        setFollowUpSuggestErr(supabaseEnvError ?? "Supabase is not configured.");
+        setFollowUpSuggestions(staticFollowUpSuggestions());
+        return;
+      }
+      const response = await fetch(`${fnCfg.url}/functions/v1/ai-followup-suggestions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: fnCfg.anonKey,
+        },
+        body: JSON.stringify({
+          leadData: leadDataForSuggestions,
+          lastContactDate,
+        }),
+      });
+      const raw = await response.text();
+      let parsed: { suggestions?: FollowUpAiSuggestion[]; error?: string };
+      try {
+        parsed = JSON.parse(raw) as typeof parsed;
+      } catch {
+        setFollowUpSuggestErr("Invalid response from suggestions service.");
+        setFollowUpSuggestions(staticFollowUpSuggestions());
+        return;
+      }
+      if (!response.ok) {
+        setFollowUpSuggestErr(
+          typeof parsed.error === "string" && parsed.error.trim()
+            ? parsed.error.trim()
+            : `Request failed (${response.status})`,
+        );
+        setFollowUpSuggestions(
+          Array.isArray(parsed.suggestions) && parsed.suggestions.length
+            ? parsed.suggestions
+            : staticFollowUpSuggestions(),
+        );
+        return;
+      }
+      const list = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+      const normalized = list.filter(
+        (s) =>
+          s &&
+          typeof s.action === "string" &&
+          typeof s.timing === "string" &&
+          typeof s.channel === "string" &&
+          typeof s.emoji === "string" &&
+          typeof s.dueAtIso === "string" &&
+          !Number.isNaN(Date.parse(s.dueAtIso)),
+      );
+      setFollowUpSuggestions(normalized.length ? normalized : staticFollowUpSuggestions());
+    } catch (e) {
+      setFollowUpSuggestErr(e instanceof Error ? e.message : "Could not load suggestions.");
+      setFollowUpSuggestions(staticFollowUpSuggestions());
+    } finally {
+      setFollowUpSuggestLoading(false);
+    }
+  }, [leadDataForSuggestions, lastContactDate]);
+
+  const closeFollowUpSuggestModal = useCallback(() => {
+    setFollowUpSuggestOpen(false);
+    setFollowUpSuggestLoading(false);
+    setFollowUpSuggestErr(null);
+  }, []);
+
+  const onSelectFollowUpSuggestion = useCallback((s: FollowUpAiSuggestion) => {
+    setFollowUpSuggestOpen(false);
+    const d = new Date(s.dueAtIso);
+    if (Number.isNaN(d.getTime())) {
+      followUpPickerRef.current?.();
+      return;
+    }
+    followUpPickerRef.current?.({
+      initialDate: d,
+      mode: "datetime",
+      preserveTime: true,
+      successToastMessage: `Follow-up set! We'll remind you ${s.timing}`,
+    });
+  }, []);
+
+  const onFollowUpCustom = useCallback(() => {
+    setFollowUpSuggestOpen(false);
+    followUpPickerRef.current?.();
+  }, []);
+
   const closeScoreExplainModal = useCallback(() => {
     setScoreExplainOpen(false);
     setScoreExplainLoading(false);
@@ -913,6 +1103,11 @@ export function LeadDetailScreen({ route, navigation }: Props) {
               nextFollowUpAt={lead.next_follow_up_at}
               label="Set follow-up"
               onSaved={onFollowUpSavedDetail}
+              interceptPress={({ openPicker }) => {
+                followUpPickerRef.current = openPicker;
+                setFollowUpSuggestOpen(true);
+                void fetchFollowUpSuggestions();
+              }}
             />
           </View>
           <Pressable
@@ -1336,6 +1531,75 @@ export function LeadDetailScreen({ route, navigation }: Props) {
               accessibilityLabel="Got it"
             >
               <Text style={styles.scoreExplainGotItText}>Got it!</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={followUpSuggestOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeFollowUpSuggestModal}
+      >
+        <View style={styles.followUpSuggestModalRoot}>
+          <Pressable
+            style={styles.templatesModalBackdrop}
+            onPress={closeFollowUpSuggestModal}
+            accessibilityLabel="Dismiss smart follow-up suggestions"
+          />
+          <View style={styles.followUpSuggestSheet}>
+            <Text style={styles.followUpSuggestTitle}>Smart follow-up</Text>
+            <Text style={styles.followUpSuggestSubtitle}>
+              {leadDisplayName(lead.name)} · Pick a suggestion or set manually
+            </Text>
+            {followUpSuggestLoading ? (
+              <View style={styles.followUpSuggestLoadingBox}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.followUpSuggestLoadingText}>Generating suggestions…</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.followUpSuggestScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={Platform.OS !== "web"}
+              >
+                {followUpSuggestErr ? (
+                  <Text style={styles.followUpSuggestErrText}>{followUpSuggestErr}</Text>
+                ) : null}
+                {followUpSuggestions.map((s, idx) => (
+                  <Pressable
+                    key={`${s.action}-${idx}`}
+                    style={({ pressed }) => [styles.followUpCard, pressed && styles.followUpCardPressed]}
+                    onPress={() => onSelectFollowUpSuggestion(s)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${s.emoji} ${s.action}`}
+                  >
+                    <Text style={styles.followUpCardTitle}>
+                      {s.emoji} <Text style={styles.followUpCardTitleBold}>{s.action}</Text>
+                    </Text>
+                    <Text style={styles.followUpCardMeta}>
+                      {s.timing} · {s.channel}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  style={({ pressed }) => [styles.followUpCustomBtn, pressed && styles.followUpCardPressed]}
+                  onPress={onFollowUpCustom}
+                  accessibilityRole="button"
+                  accessibilityLabel="Custom follow-up date and time"
+                >
+                  <Text style={styles.followUpCustomBtnText}>Custom — pick date and time</Text>
+                </Pressable>
+              </ScrollView>
+            )}
+            <Pressable
+              style={({ pressed }) => [styles.followUpSuggestClose, pressed && styles.templatesModalClosePressed]}
+              onPress={closeFollowUpSuggestModal}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel smart follow-up"
+            >
+              <Text style={styles.followUpSuggestCloseText}>Cancel</Text>
             </Pressable>
           </View>
         </View>
@@ -1886,4 +2150,73 @@ const styles = StyleSheet.create({
   },
   savedMeta: { color: colors.textMuted, fontSize: 12, marginBottom: 6 },
   savedBody: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  followUpSuggestModalRoot: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  followUpSuggestSheet: {
+    zIndex: 2,
+    elevation: 4,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: "88%",
+    padding: 16,
+    overflow: "hidden",
+  },
+  followUpSuggestTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  followUpSuggestSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  followUpSuggestScroll: { maxHeight: 420 },
+  followUpSuggestLoadingBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 28,
+    gap: 14,
+  },
+  followUpSuggestLoadingText: { color: colors.textMuted, fontSize: 14 },
+  followUpSuggestErrText: {
+    color: colors.warning,
+    fontSize: 13,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  followUpCard: {
+    backgroundColor: colors.cardSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  followUpCardPressed: { opacity: 0.92 },
+  followUpCardTitle: { color: colors.text, fontSize: 15, lineHeight: 22 },
+  followUpCardTitleBold: { fontWeight: "800" },
+  followUpCardMeta: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
+  followUpCustomBtn: {
+    marginTop: 4,
+    marginBottom: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    backgroundColor: colors.bg,
+  },
+  followUpCustomBtnText: { color: colors.primary, fontWeight: "800", fontSize: 15 },
+  followUpSuggestClose: { marginTop: 8, alignItems: "center", paddingVertical: 12 },
+  followUpSuggestCloseText: { color: colors.textMuted, fontWeight: "700", fontSize: 16 },
 });

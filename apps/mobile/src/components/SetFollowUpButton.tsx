@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -26,6 +26,16 @@ function defaultPickerDate(nextIso: string | null | undefined): Date {
   return t;
 }
 
+export type OpenFollowUpPickerOptions = {
+  initialDate?: Date;
+  /** Default `date` (09:00 local on chosen day). Use `datetime` with `preserveTime` for AI-suggested times. */
+  mode?: "date" | "datetime";
+  /** When `mode` is `datetime`, save the picked clock time; when `date`, day is normalized to 09:00 local. */
+  preserveTime?: boolean;
+  /** If set, shown instead of the default scheduled toast after save. */
+  successToastMessage?: string | null;
+};
+
 type Props = {
   leadId: string;
   nextFollowUpAt?: string | null;
@@ -35,22 +45,44 @@ type Props = {
   /** Defaults to "Set follow-up". */
   label?: string;
   onSaved: (iso: string) => void;
+  /**
+   * When set, tap does not open the picker immediately. Call `openPicker` when ready
+   * (e.g. after smart suggestions).
+   */
+  interceptPress?: (helpers: { openPicker: (opts?: OpenFollowUpPickerOptions) => void }) => void;
 };
 
-export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, label = "Set follow-up", onSaved }: Props) {
+export function SetFollowUpButton({
+  leadId,
+  nextFollowUpAt,
+  disabled,
+  compact,
+  label = "Set follow-up",
+  onSaved,
+  interceptPress,
+}: Props) {
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
   const [iosOpen, setIosOpen] = useState(false);
   const [androidOpen, setAndroidOpen] = useState(false);
   const [draft, setDraft] = useState(() => defaultPickerDate(nextFollowUpAt));
+  const [pickerMode, setPickerMode] = useState<"date" | "datetime">("date");
+  const preserveTimeRef = useRef(false);
+  const successToastRef = useRef<string | null>(null);
 
   const persist = useCallback(
     async (d: Date) => {
       setSaving(true);
       try {
-        const iso = await updateLeadNextFollowUpAt(leadId, d);
+        const iso = await updateLeadNextFollowUpAt(leadId, d, { preserveTime: preserveTimeRef.current });
         onSaved(iso);
-        showToast(`Follow-up scheduled for ${formatSafeDateTime(iso, "—")}`, "success");
+        const custom = successToastRef.current;
+        successToastRef.current = null;
+        const message =
+          custom != null && String(custom).trim() !== ""
+            ? String(custom).trim()
+            : `Follow-up scheduled for ${formatSafeDateTime(iso, "—")}`;
+        showToast(message, "success");
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Could not save follow-up.", "error");
       } finally {
@@ -60,25 +92,45 @@ export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, l
     [leadId, onSaved, showToast],
   );
 
-  const openPicker = useCallback(() => {
-    setDraft(defaultPickerDate(nextFollowUpAt));
-    if (Platform.OS === "android") {
-      setAndroidOpen(true);
-    } else {
-      setIosOpen(true);
+  const openPicker = useCallback(
+    (opts?: OpenFollowUpPickerOptions) => {
+      successToastRef.current = opts?.successToastMessage ?? null;
+      const mode = opts?.mode ?? "date";
+      setPickerMode(mode);
+      preserveTimeRef.current = opts?.preserveTime ?? mode === "datetime";
+      setDraft(opts?.initialDate ?? defaultPickerDate(nextFollowUpAt));
+      if (Platform.OS === "android") {
+        setAndroidOpen(true);
+      } else {
+        setIosOpen(true);
+      }
+    },
+    [nextFollowUpAt],
+  );
+
+  const onPress = useCallback(() => {
+    if (interceptPress) {
+      interceptPress({ openPicker });
+      return;
     }
-  }, [nextFollowUpAt]);
+    openPicker();
+  }, [interceptPress, openPicker]);
 
   const onAndroidChange = useCallback(
     (event: DateTimePickerEvent, selected?: Date) => {
       setAndroidOpen(false);
-      if (event.type === "dismissed") return;
+      if (event.type === "dismissed") {
+        successToastRef.current = null;
+        return;
+      }
       if (selected) void persist(selected);
     },
     [persist],
   );
 
   const busy = disabled || saving;
+
+  const modalTitle = pickerMode === "datetime" ? "Follow-up date & time" : "Follow-up date";
 
   return (
     <>
@@ -88,7 +140,7 @@ export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, l
           pressed && styles.pressed,
           busy && styles.btnDisabled,
         ]}
-        onPress={openPicker}
+        onPress={onPress}
         disabled={busy}
         accessibilityRole="button"
         accessibilityLabel="Set follow-up date"
@@ -106,7 +158,7 @@ export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, l
       {androidOpen ? (
         <DateTimePicker
           value={draft}
-          mode="date"
+          mode={pickerMode}
           display="default"
           onChange={onAndroidChange}
         />
@@ -115,10 +167,10 @@ export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, l
       <Modal visible={iosOpen} animationType="fade" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Follow-up date</Text>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
             <DateTimePicker
               value={draft}
-              mode="date"
+              mode={pickerMode}
               display="spinner"
               onChange={(_, date) => {
                 if (date) setDraft(date);
@@ -127,7 +179,10 @@ export function SetFollowUpButton({ leadId, nextFollowUpAt, disabled, compact, l
             <View style={styles.modalActions}>
               <Pressable
                 style={({ pressed }) => [styles.modalBtnGhost, pressed && styles.pressed]}
-                onPress={() => setIosOpen(false)}
+                onPress={() => {
+                  successToastRef.current = null;
+                  setIosOpen(false);
+                }}
               >
                 <Text style={styles.modalBtnGhostText}>Cancel</Text>
               </Pressable>
