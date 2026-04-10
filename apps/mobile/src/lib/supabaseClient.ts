@@ -74,3 +74,11 @@ export function getSupabaseClient(): SupabaseClient {
 export function isSupabaseConfigured(): boolean {
   return supabase !== null;
 }
+
+/**
+ * URL + anon key for explicit `fetch` to Edge Functions (Authorization: user JWT + apikey header).
+ */
+export function getSupabaseFunctionFetchConfig(): { url: string; anonKey: string } | null {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  return { url: supabaseUrl.replace(/\/+$/, ""), anonKey: supabaseAnonKey };
+}

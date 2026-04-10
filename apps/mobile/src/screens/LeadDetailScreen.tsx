@@ -40,7 +40,12 @@ import {
   type WhatsAppMessageTemplate,
 } from "../lib/whatsappTemplates";
 import { openWhatsAppForPhone, openWhatsAppWithPrefilledText } from "../lib/whatsapp";
-import { getSupabaseClient, isSupabaseConfigured, supabaseEnvError } from "../lib/supabaseClient";
+import {
+  getSupabaseClient,
+  getSupabaseFunctionFetchConfig,
+  isSupabaseConfigured,
+  supabaseEnvError,
+} from "../lib/supabaseClient";
 import type { RootStackParamList } from "../navigation/types";
 import {
   buildSuggestLeadMessages,
@@ -50,6 +55,7 @@ import {
   getCachedReply,
   setCachedReply,
   tryGetOpenAIClientConfig,
+  toUserFacingAiError,
   type GenerateReplyErrorCode,
 } from "../services/ai";
 import { fetchLeadAiGeneratedReplies, type LeadAiGeneratedReplyRow } from "../services/leadAiRepliesRepository";
@@ -265,6 +271,11 @@ export function LeadDetailScreen({ route, navigation }: Props) {
   const [waTemplateStep, setWaTemplateStep] = useState<"list" | "compose">("list");
   const [waComposeText, setWaComposeText] = useState("");
   const [waCustomDraft, setWaCustomDraft] = useState("");
+
+  const [scoreExplainOpen, setScoreExplainOpen] = useState(false);
+  const [scoreExplainLoading, setScoreExplainLoading] = useState(false);
+  const [scoreExplainBody, setScoreExplainBody] = useState<string | null>(null);
+  const [scoreExplainErr, setScoreExplainErr] = useState<string | null>(null);
 
   const { showToast } = useToast();
   const bumpLeadsDataRevision = useAppStore((s) => s.bumpLeadsDataRevision);
@@ -632,6 +643,100 @@ export function LeadDetailScreen({ route, navigation }: Props) {
     };
   }, [lead]);
 
+  const closeScoreExplainModal = useCallback(() => {
+    setScoreExplainOpen(false);
+    setScoreExplainLoading(false);
+    setScoreExplainBody(null);
+    setScoreExplainErr(null);
+  }, []);
+
+  const openScoreExplanation = useCallback(async () => {
+    if (!lead) return;
+    setScoreExplainOpen(true);
+    setScoreExplainLoading(true);
+    setScoreExplainBody(null);
+    setScoreExplainErr(null);
+    try {
+      if (!isSupabaseConfigured()) {
+        setScoreExplainErr(supabaseEnvError ?? "Supabase is not configured.");
+        return;
+      }
+      const dealVal = coerceDealValue(lead.deal_value);
+      const created = lead.created_at?.trim();
+      let addedToday: "yes" | "no" = "no";
+      if (created) {
+        const d = new Date(created);
+        const n = new Date();
+        if (
+          d.getFullYear() === n.getFullYear() &&
+          d.getMonth() === n.getMonth() &&
+          d.getDate() === n.getDate()
+        ) {
+          addedToday = "yes";
+        }
+      }
+      const leadData = {
+        name: leadDisplayName(lead.name),
+        score: leadScoring.score,
+        stage: formatLeadStageLabel(lead.status),
+        priority: formatLeadPriorityDisplay(lead.priority),
+        hasPhone: !!lead.phone?.trim(),
+        hasDealValue: dealVal > 0,
+        source: getSourceLabel(lead.source_channel ?? lead.source),
+        addedToday,
+      };
+      const supabaseClient = getSupabaseClient();
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+      const accessToken = session?.access_token?.trim();
+      if (!accessToken) {
+        setScoreExplainErr("Sign in to use AI score analysis.");
+        return;
+      }
+      const fnCfg = getSupabaseFunctionFetchConfig();
+      if (!fnCfg) {
+        setScoreExplainErr(supabaseEnvError ?? "Supabase is not configured.");
+        return;
+      }
+      const response = await fetch(`${fnCfg.url}/functions/v1/ai-score-analysis`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: fnCfg.anonKey,
+        },
+        body: JSON.stringify({ leadData }),
+      });
+      const raw = await response.text();
+      let parsed: { analysis?: string; error?: string };
+      try {
+        parsed = JSON.parse(raw) as { analysis?: string; error?: string };
+      } catch {
+        setScoreExplainErr("Invalid response from AI service.");
+        return;
+      }
+      if (!response.ok) {
+        setScoreExplainErr(
+          typeof parsed.error === "string" && parsed.error.trim()
+            ? parsed.error.trim()
+            : `Request failed (${response.status})`,
+        );
+        return;
+      }
+      const analysis = typeof parsed.analysis === "string" ? parsed.analysis.trim() : "";
+      if (!analysis) {
+        setScoreExplainErr("The AI returned an empty analysis. Try again.");
+        return;
+      }
+      setScoreExplainBody(analysis);
+    } catch (e) {
+      setScoreExplainErr(toUserFacingAiError(e));
+    } finally {
+      setScoreExplainLoading(false);
+    }
+  }, [lead, leadScoring.score]);
+
   useEffect(() => {
     if (!templatesModalOpen) {
       setWaTemplateStep("list");
@@ -741,7 +846,17 @@ export function LeadDetailScreen({ route, navigation }: Props) {
           <Text style={styles.scoreTitle}>Lead Score</Text>
           <View style={styles.scoreRow}>
             <Text style={[styles.scoreBig, { color: getScoreColor(leadScoring.score) }]}>{leadScoring.score}</Text>
-            <Text style={styles.scoreLabel}>{getScoreLabel(leadScoring.score)}</Text>
+            <View style={styles.scoreLabelCol}>
+              <Text style={styles.scoreLabel}>{getScoreLabel(leadScoring.score)}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.scoreWhyBtn, pressed && styles.scoreWhyBtnPressed]}
+                onPress={() => void openScoreExplanation()}
+                accessibilityRole="button"
+                accessibilityLabel="Why this score — AI explanation"
+              >
+                <Text style={styles.scoreWhyBtnText}>Why this score? 🤖</Text>
+              </Pressable>
+            </View>
           </View>
           <Text style={styles.scoreSubtitle}>Score breakdown:</Text>
           {leadScoring.reasons.map((reason, i) => (
@@ -749,7 +864,10 @@ export function LeadDetailScreen({ route, navigation }: Props) {
               <Text style={styles.scoreReasonText}>
                 {reason.emoji} {reason.label}
               </Text>
-              <Text style={styles.scoreReasonPoints}>+{reason.points}</Text>
+              <Text style={styles.scoreReasonPoints}>
+                {reason.points >= 0 ? "+" : ""}
+                {reason.points}
+              </Text>
             </View>
           ))}
         </Card>
@@ -1184,6 +1302,44 @@ export function LeadDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={scoreExplainOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeScoreExplainModal}
+      >
+        <View style={styles.scoreExplainModalRoot}>
+          <Pressable style={styles.templatesModalBackdrop} onPress={closeScoreExplainModal} accessibilityLabel="Dismiss" />
+          <View style={styles.scoreExplainSheet}>
+            <Text style={styles.scoreExplainTitle}>AI Score Analysis 🤖</Text>
+            {scoreExplainLoading ? (
+              <View style={styles.scoreExplainLoadingBox}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.scoreExplainLoadingText}>Analyzing lead…</Text>
+              </View>
+            ) : scoreExplainErr ? (
+              <Text style={styles.scoreExplainError}>{scoreExplainErr}</Text>
+            ) : (
+              <ScrollView
+                style={styles.scoreExplainScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={Platform.OS !== "web"}
+              >
+                <Text style={styles.scoreExplainBody}>{scoreExplainBody ?? ""}</Text>
+              </ScrollView>
+            )}
+            <Pressable
+              style={({ pressed }) => [styles.scoreExplainGotIt, pressed && styles.scoreWhyBtnPressed]}
+              onPress={closeScoreExplainModal}
+              accessibilityRole="button"
+              accessibilityLabel="Got it"
+            >
+              <Text style={styles.scoreExplainGotItText}>Got it!</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1269,9 +1425,21 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
-  scoreRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
+  scoreRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 8, flexWrap: "wrap" },
   scoreBig: { fontSize: 36, fontWeight: "800" },
-  scoreLabel: { color: colors.text, fontSize: 16, fontWeight: "600", flex: 1 },
+  scoreLabelCol: { flex: 1, minWidth: 140, gap: 8 },
+  scoreLabel: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  scoreWhyBtn: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: colors.cardSoft,
+  },
+  scoreWhyBtnPressed: { opacity: 0.88 },
+  scoreWhyBtnText: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   scoreSubtitle: { color: colors.textMuted, fontSize: 13, fontWeight: "600", marginTop: 14, marginBottom: 6 },
   scoreReasonRow: {
     flexDirection: "row",
@@ -1283,6 +1451,51 @@ const styles = StyleSheet.create({
   },
   scoreReasonText: { color: colors.text, fontSize: 14, flex: 1, paddingRight: 8 },
   scoreReasonPoints: { color: colors.success, fontSize: 14, fontWeight: "700" },
+  scoreExplainModalRoot: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  scoreExplainSheet: {
+    zIndex: 2,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: "88%",
+    padding: 16,
+    overflow: "hidden",
+  },
+  scoreExplainTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  scoreExplainLoadingBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 28,
+    gap: 14,
+  },
+  scoreExplainLoadingText: { color: colors.textMuted, fontSize: 14 },
+  scoreExplainScroll: { maxHeight: 380 },
+  scoreExplainBody: { color: colors.text, fontSize: 15, lineHeight: 24 },
+  scoreExplainError: {
+    color: colors.warning,
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 8,
+  },
+  scoreExplainGotIt: {
+    marginTop: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  scoreExplainGotItText: { color: colors.text, fontWeight: "800", fontSize: 16 },
   leadInfoCard: { marginBottom: 4 },
   chatHistoryCard: { marginBottom: 4 },
   chatHistoryMeta: { color: colors.textMuted, fontSize: 13, marginBottom: 12 },
