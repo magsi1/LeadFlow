@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -44,6 +45,11 @@ import { crossPlatformConfirm } from "../lib/crossPlatformConfirm";
 import { mergeAppPreferences, TIMEZONE_OPTIONS } from "../lib/appPreferences";
 import { isSuspiciousLeadName } from "../lib/testLeadDetection";
 import { api } from "../services/api";
+import {
+  cancelAllNotifications,
+  refreshDailyDigestSchedule,
+  sendImmediateDigest,
+} from "../services/notificationService";
 import { getNotificationPermissionStatus, registerExpoPushToken } from "../services/push";
 import { useAppStore } from "../state/useAppStore";
 import { useAppPreferencesStore } from "../state/useAppPreferencesStore";
@@ -253,6 +259,43 @@ export function SettingsScreen({ }: Props) {
     setPrefTimeZone(p.timeZone);
   }, [prefsHydrated]);
 
+  const dailyDigestNotifications = useAppPreferencesStore((s) => s.dailyDigestNotifications);
+
+  const onToggleDailyDigest = useCallback(
+    async (enabled: boolean) => {
+      try {
+        const cur = useAppPreferencesStore.getState();
+        await commitPrefs(
+          mergeAppPreferences({
+            defaultLeadPriority: cur.defaultLeadPriority,
+            whatsAppCountryCode: cur.whatsAppCountryCode,
+            timeZone: cur.timeZone,
+            dailyDigestNotifications: enabled,
+          }),
+        );
+        if (enabled) {
+          await refreshDailyDigestSchedule();
+        } else {
+          await cancelAllNotifications();
+        }
+        showToast(enabled ? "Daily digest notifications on" : "Daily digest notifications off", "success");
+        bumpLeadsDataRevision();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Could not update notification preference.", "error");
+      }
+    },
+    [commitPrefs, showToast, bumpLeadsDataRevision],
+  );
+
+  const onTestDailyDigest = useCallback(async () => {
+    try {
+      await sendImmediateDigest();
+      showToast("Test digest will appear in a few seconds.", "info");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not send test notification.", "error");
+    }
+  }, [showToast]);
+
   const onSaveAppPreferences = useCallback(async () => {
     if (prefSaving) return;
     setPrefSaving(true);
@@ -262,6 +305,7 @@ export function SettingsScreen({ }: Props) {
           defaultLeadPriority: prefPriority,
           whatsAppCountryCode: prefWaCode.trim(),
           timeZone: prefTimeZone,
+          dailyDigestNotifications: useAppPreferencesStore.getState().dailyDigestNotifications,
         }),
       );
       showToast("Preferences saved", "success");
@@ -685,6 +729,32 @@ export function SettingsScreen({ }: Props) {
           </Text>
           <Text style={styles.prefChevron}>▾</Text>
         </Pressable>
+
+        <Text style={[styles.dmSubheading, styles.dmSubheadingSpaced]}>Daily digest notifications</Text>
+        <Text style={styles.prefFieldHint}>
+          Local reminder at 9:00 (device time) with follow-ups, hot leads, and pipeline summary. Requires
+          notification permission.
+        </Text>
+        <View style={styles.digestToggleRow}>
+          <Text style={styles.digestToggleLabel}>Daily digest</Text>
+          <Switch
+            value={dailyDigestNotifications}
+            onValueChange={(v) => void onToggleDailyDigest(v)}
+            disabled={!prefsHydrated}
+            trackColor={{ false: colors.border, true: `${colors.primary}88` }}
+            thumbColor={dailyDigestNotifications ? colors.primary : colors.textMuted}
+          />
+        </View>
+        {Platform.OS !== "web" ? (
+          <Pressable
+            style={({ pressed }) => [styles.digestTestBtn, pressed && styles.pressed]}
+            onPress={() => void onTestDailyDigest()}
+            accessibilityRole="button"
+            accessibilityLabel="Send test digest notification"
+          >
+            <Text style={styles.digestTestBtnText}>Send test digest (now)</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           style={({ pressed }) => [
@@ -1313,6 +1383,26 @@ const styles = StyleSheet.create({
   prefCard: { marginBottom: 14 },
   prefHint: { color: colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 14 },
   prefFieldHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 8 },
+  digestToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 10,
+    paddingVertical: 4,
+  },
+  digestToggleLabel: { color: colors.text, fontSize: 16, fontWeight: "700", flex: 1 },
+  digestTestBtn: {
+    alignSelf: "flex-start",
+    marginBottom: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardSoft,
+  },
+  digestTestBtnText: { color: colors.primary, fontWeight: "700", fontSize: 14 },
   prefSelect: {
     flexDirection: "row",
     alignItems: "center",

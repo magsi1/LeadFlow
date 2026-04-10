@@ -3,6 +3,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { useAppPreferencesStore } from "./state/useAppPreferencesStore";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -21,10 +22,13 @@ import { LeadDetailScreen } from "./screens/LeadDetailScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { DuplicateLeadsReviewScreen } from "./screens/DuplicateLeadsReviewScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { cancelAllNotifications, initializeDailyDigestScheduling } from "./services/notificationService";
 import { configureNotificationHandler } from "./services/push";
 import { connectSocket, disconnectSocket } from "./services/socket";
 import { ToastProvider } from "./context/ToastContext";
 import { startSupabaseAuth } from "./lib/supabaseAuthBootstrap";
+import { isSupabaseConfigured } from "./lib/supabaseClient";
+import { useAppStore } from "./state/useAppStore";
 import { useAuthStore } from "./state/useAuthStore";
 import { colors } from "./theme/colors";
 
@@ -143,6 +147,9 @@ function MainTabs() {
 export default function App() {
   const user = useAuthStore((s) => s.user);
   const restoringSession = useAuthStore((s) => s.restoringSession);
+  const prefsHydrated = useAppPreferencesStore((s) => s.hydrated);
+  const dailyDigestOn = useAppPreferencesStore((s) => s.dailyDigestNotifications);
+  const leadsDataRevision = useAppStore((s) => s.leadsDataRevision);
 
   useEffect(() => {
     configureNotificationHandler();
@@ -156,91 +163,106 @@ export default function App() {
     void useAppPreferencesStore.getState().hydrate();
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (!user?.id) {
+      void cancelAllNotifications();
+      return;
+    }
+    if (!prefsHydrated) return;
+    if (!isSupabaseConfigured()) return;
+    if (!dailyDigestOn) {
+      void cancelAllNotifications();
+      return;
+    }
+    void initializeDailyDigestScheduling();
+  }, [user?.id, prefsHydrated, dailyDigestOn, leadsDataRevision]);
+
   return (
     <SafeAreaProvider>
       <ToastProvider>
-      <StatusBar style="light" />
-      {restoringSession ? (
-        <LoadingScreen message="Restoring session…" />
-      ) : (
-        <NavigationContainer theme={navTheme} fallback={<LoadingScreen message="Loading…" />}>
-          <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-            {!user ? (
-              <Stack.Screen name="Login" component={LoginScreen} />
-            ) : (
-              <>
-                <Stack.Screen name="Main" component={MainTabs} />
-                <Stack.Screen
-                  name="LeadDetail"
-                  component={LeadDetailScreen}
-                  options={{
-                    headerShown: true,
-                    title: "Lead",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="LeadDetails"
-                  component={LeadDetailScreen}
-                  options={{
-                    headerShown: true,
-                    title: "Lead details",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="LeadAssistant"
-                  component={LeadAssistantScreen}
-                  options={{
-                    headerShown: true,
-                    title: "AI assistant",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="AddLead"
-                  component={AddLeadScreen}
-                  options={{
-                    headerShown: true,
-                    title: "Add lead",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="EditLead"
-                  component={EditLeadScreen}
-                  options={{
-                    headerShown: true,
-                    title: "Edit lead",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-                <Stack.Screen
-                  name="DuplicateLeadsReview"
-                  component={DuplicateLeadsReviewScreen}
-                  options={{
-                    headerShown: true,
-                    title: "Duplicate leads",
-                    headerStyle: { backgroundColor: colors.bg },
-                    headerTintColor: colors.text,
-                    headerShadowVisible: false,
-                  }}
-                />
-              </>
-            )}
-          </Stack.Navigator>
-        </NavigationContainer>
-      )}
+        <StatusBar style="light" />
+        {restoringSession ? (
+          <LoadingScreen message="Restoring session…" />
+        ) : (
+          <NavigationContainer theme={navTheme} fallback={<LoadingScreen message="Loading…" />}>
+            <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+              {!user ? (
+                <Stack.Screen name="Login" component={LoginScreen} />
+              ) : (
+                <>
+                  <Stack.Screen name="Main" component={MainTabs} />
+                  <Stack.Screen
+                    name="LeadDetail"
+                    component={LeadDetailScreen}
+                    options={{
+                      headerShown: true,
+                      title: "Lead",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="LeadDetails"
+                    component={LeadDetailScreen}
+                    options={{
+                      headerShown: true,
+                      title: "Lead details",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="LeadAssistant"
+                    component={LeadAssistantScreen}
+                    options={{
+                      headerShown: true,
+                      title: "AI assistant",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="AddLead"
+                    component={AddLeadScreen}
+                    options={{
+                      headerShown: true,
+                      title: "Add lead",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="EditLead"
+                    component={EditLeadScreen}
+                    options={{
+                      headerShown: true,
+                      title: "Edit lead",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                  <Stack.Screen
+                    name="DuplicateLeadsReview"
+                    component={DuplicateLeadsReviewScreen}
+                    options={{
+                      headerShown: true,
+                      title: "Duplicate leads",
+                      headerStyle: { backgroundColor: colors.bg },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                    }}
+                  />
+                </>
+              )}
+            </Stack.Navigator>
+          </NavigationContainer>
+        )}
       </ToastProvider>
     </SafeAreaProvider>
   );

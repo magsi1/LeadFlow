@@ -13,12 +13,15 @@ export type AppPreferences = {
   whatsAppCountryCode: string;
   /** IANA time zone for “today” and follow-up day boundaries. */
   timeZone: string;
+  /** Local 9am daily digest push (expo-notifications). */
+  dailyDigestNotifications: boolean;
 };
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   defaultLeadPriority: "medium",
   whatsAppCountryCode: "",
   timeZone: "Asia/Karachi",
+  dailyDigestNotifications: true,
 };
 
 export const TIMEZONE_OPTIONS: { id: string; label: string }[] = [
@@ -53,8 +56,8 @@ export function mergeAppPreferences(partial: Partial<AppPreferences> | null | un
   return {
     defaultLeadPriority:
       partial?.defaultLeadPriority === "high" ||
-      partial?.defaultLeadPriority === "medium" ||
-      partial?.defaultLeadPriority === "low"
+        partial?.defaultLeadPriority === "medium" ||
+        partial?.defaultLeadPriority === "low"
         ? partial.defaultLeadPriority
         : DEFAULT_APP_PREFERENCES.defaultLeadPriority,
     whatsAppCountryCode:
@@ -65,6 +68,10 @@ export function mergeAppPreferences(partial: Partial<AppPreferences> | null | un
       typeof partial?.timeZone === "string" && partial.timeZone.trim() !== ""
         ? partial.timeZone.trim()
         : DEFAULT_APP_PREFERENCES.timeZone,
+    dailyDigestNotifications:
+      typeof partial?.dailyDigestNotifications === "boolean"
+        ? partial.dailyDigestNotifications
+        : DEFAULT_APP_PREFERENCES.dailyDigestNotifications,
   };
 }
 

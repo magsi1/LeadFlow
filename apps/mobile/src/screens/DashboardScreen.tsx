@@ -20,6 +20,7 @@ import { DashboardInsights } from "../components/DashboardInsights";
 import { LeadSourcesSection } from "../components/LeadSourcesSection";
 import { FollowUpOverdueAlert } from "../components/FollowUpOverdueAlert";
 import { PipelineOverviewSection } from "../components/PipelineOverviewSection";
+import { fetchDailyDigestData, type DailyDigestData } from "../lib/dailyDigestData";
 import { formatLeadStageLabel } from "../lib/dataManagementDuplicates";
 import { formatPkrEnIn } from "../lib/dealValue";
 import {
@@ -85,6 +86,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [aiReplies30d, setAiReplies30d] = useState<number | null>(null);
   const [hotLeads, setHotLeads] = useState<InboxLeadRow[]>([]);
+  const [digest, setDigest] = useState<DailyDigestData | null>(null);
 
   const fetchDashboardDataRef = useRef<() => Promise<void>>(async () => { });
   const dashboardFetchedOnceRef = useRef(false);
@@ -101,7 +103,7 @@ export function DashboardScreen({ navigation }: Props) {
 
     try {
       try {
-        const [dashResult, series, hot] = await Promise.all([
+        const [dashResult, series, hot, digestData] = await Promise.all([
           loadDashboardAnalytics({
             demoMode: api.demoMode,
             supabaseConfigured: isSupabaseConfigured(),
@@ -113,17 +115,20 @@ export function DashboardScreen({ navigation }: Props) {
             timeZone: appTimeZone,
           }),
           fetchTopHotLeads(),
+          isSupabaseConfigured() ? fetchDailyDigestData(appTimeZone) : Promise.resolve(null),
         ]);
         nextAnalytics = dashResult.dashboard ?? emptyDashboardAnalytics();
         apiErr = dashResult.apiError;
         nextChartPoints = leadsLast7DaysToChartData(series);
         setHotLeads(Array.isArray(hot) ? hot : []);
+        setDigest(digestData);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         nextAnalytics = emptyDashboardAnalytics();
         nextChartPoints = [];
         apiErr = msg;
         setHotLeads([]);
+        setDigest(null);
       }
 
       setAnalyticsState(nextAnalytics);
@@ -149,6 +154,7 @@ export function DashboardScreen({ navigation }: Props) {
       setError(msg);
       setAiReplies30d(null);
       setHotLeads([]);
+      setDigest(null);
     }
   }, [setStoreAnalytics, appTimeZone]);
 
@@ -404,6 +410,86 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         ) : null}
 
+        {isSupabaseConfigured() && digest ? (
+          <View style={styles.digestSection}>
+            <Text style={styles.digestTitle}>{`📋 Today's Priorities`}</Text>
+            <Pressable
+              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+              onPress={() => {
+                if (digest.firstFollowUpLeadId) {
+                  navigation.navigate("LeadDetail", { leadId: digest.firstFollowUpLeadId });
+                } else {
+                  navigation.navigate("FollowUps");
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Follow-ups due today"
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.warning} />
+              <View style={styles.digestRowBody}>
+                <Text style={styles.digestRowTitle}>Follow-ups due today</Text>
+                <Text style={styles.digestRowSub} numberOfLines={2}>
+                  {digest.followUpsDueTodayCount === 0
+                    ? "None scheduled for today"
+                    : `${digest.followUpsDueTodayCount} due${digest.firstFollowUpLeadName ? ` · ${digest.firstFollowUpLeadName}` : ""
+                    }`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+              onPress={() => {
+                if (digest.firstHotLeadId) {
+                  navigation.navigate("LeadDetail", { leadId: digest.firstHotLeadId });
+                } else {
+                  navigation.navigate("Inbox");
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Hot leads not contacted today"
+            >
+              <Ionicons name="flame-outline" size={20} color={colors.danger} />
+              <View style={styles.digestRowBody}>
+                <Text style={styles.digestRowTitle}>Hot leads (score over 70) — not touched today</Text>
+                <Text style={styles.digestRowSub} numberOfLines={2}>
+                  {digest.hotNotContactedTodayCount === 0
+                    ? "You’re on top of it"
+                    : `${digest.hotNotContactedTodayCount} lead${digest.hotNotContactedTodayCount === 1 ? "" : "s"
+                    }${digest.firstHotLeadName ? ` · ${digest.firstHotLeadName}` : ""}`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.digestRow, pressed && styles.digestRowPressed]}
+              onPress={() => {
+                if (digest.firstAtRiskLeadId) {
+                  navigation.navigate("LeadDetail", { leadId: digest.firstAtRiskLeadId });
+                } else {
+                  navigation.navigate("Pipeline");
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Pipeline value at risk"
+            >
+              <Ionicons name="alert-circle-outline" size={20} color={colors.primary} />
+              <View style={styles.digestRowBody}>
+                <Text style={styles.digestRowTitle}>Pipeline at risk (7+ days idle)</Text>
+                <Text style={styles.digestRowSub} numberOfLines={2}>
+                  {digest.pipelineAtRiskCount === 0
+                    ? "No stale open deals"
+                    : `${digest.pipelineAtRiskCount} lead${digest.pipelineAtRiskCount === 1 ? "" : "s"
+                    } · ${formatPkrEnIn(digest.pipelineAtRiskPkr)}`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.pipelineValueSection}>
           <Text style={styles.pipelineValueTitle}>PIPELINE VALUE 💰</Text>
           <View style={styles.pipelineValueBox}>
@@ -607,6 +693,29 @@ const styles = StyleSheet.create({
   hotLeadScore: { color: colors.primary, fontSize: 16, fontWeight: "800", minWidth: 28 },
   hotLeadName: { color: colors.text, fontSize: 16, fontWeight: "700", flex: 1, minWidth: 0 },
   hotLeadSub: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
+  digestSection: { marginBottom: 16 },
+  digestTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  digestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.cardSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  digestRowPressed: { opacity: 0.92 },
+  digestRowBody: { flex: 1, minWidth: 0 },
+  digestRowTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  digestRowSub: { color: colors.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
   pipelineValueSection: { marginBottom: 20 },
   pipelineValueTitle: {
     color: colors.text,

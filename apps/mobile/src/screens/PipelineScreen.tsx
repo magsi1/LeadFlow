@@ -9,7 +9,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -37,10 +36,12 @@ import {
 import { filterValidInboxLeads, isLeadNameMissing, leadDisplayName } from "../lib/safeData";
 import { formatLeadStageLabel } from "../lib/dataManagementDuplicates";
 import {
+  buildCsvImportTemplate,
   buildLeadsCsv,
-  downloadCsvInBrowser,
+  downloadOrShareCsv,
   fetchAllLeadsForExport,
   leadflowExportFilename,
+  leadflowImportTemplateFilename,
 } from "../lib/leadExportCsv";
 import {
   batchInsertImportedLeads,
@@ -90,7 +91,13 @@ import * as FileSystem from "expo-file-system";
 type Props = MainTabScreenProps<"Pipeline">;
 
 type ImportPreviewState =
-  | { kind: "csv"; validRows: ValidImportRow[]; skippedCount: number; previewNames: string[] }
+  | {
+    kind: "csv";
+    validRows: ValidImportRow[];
+    skippedMissingName: number;
+    totalDataRows: number;
+    previewLines: string[];
+  }
   | { kind: "whatsapp"; leads: WhatsAppGroupLeadRow[]; stats: WhatsAppImportStats; chatLines: string[] };
 
 /** Kanban columns ↔ `public.leads.status` (CRM check constraint). */
@@ -364,6 +371,7 @@ export function PipelineScreen({ navigation }: Props) {
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
   const [importPickingBusy, setImportPickingBusy] = useState(false);
   const [importConfirmBusy, setImportConfirmBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const webFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [searchMode, setSearchMode] = useState<"leads" | "chats">("leads");
@@ -522,19 +530,23 @@ export function PipelineScreen({ navigation }: Props) {
       const rows = await fetchAllLeadsForExport();
       const csv = buildLeadsCsv(rows);
       const filename = leadflowExportFilename();
-      if (Platform.OS === "web" && typeof document !== "undefined") {
-        downloadCsvInBrowser(csv, filename);
-      } else {
-        await Share.share({
-          title: filename,
-          message: csv,
-        });
-      }
+      await downloadOrShareCsv(csv, filename);
       showToast(`Exported ${rows.length} leads to CSV`, "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not export leads.", "error");
     } finally {
       setExporting(false);
+    }
+  }, [showToast]);
+
+  const onDownloadImportTemplate = useCallback(async () => {
+    try {
+      const csv = buildCsvImportTemplate();
+      const filename = leadflowImportTemplateFilename();
+      await downloadOrShareCsv(csv, filename);
+      showToast("Template ready — fill rows and import.", "info");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not share template.", "error");
     }
   }, [showToast]);
 
@@ -551,13 +563,28 @@ export function PipelineScreen({ navigation }: Props) {
           showToast("CSV file has no data", "error");
           return;
         }
-        const { valid, skippedCount } = validateAndNormalizeImportRows(headers, dataRows);
+        const { valid, skippedMissingName, missingNameColumn } = validateAndNormalizeImportRows(headers, dataRows);
         if (valid.length === 0) {
-          showToast("No valid rows to import.", "error");
+          showToast(
+            missingNameColumn
+              ? 'No "Name" column found. Download the template or add a Name (or Full name) column.'
+              : "No valid rows to import (every row is missing a name).",
+            "error",
+          );
           return;
         }
-        const previewNames = valid.slice(0, 5).map((r) => r.name);
-        setImportPreview({ kind: "csv", validRows: valid, skippedCount, previewNames });
+        const previewLines = valid.slice(0, 3).map((r) =>
+          [r.name, r.phone?.trim() ? r.phone : "—", r.rawStage?.trim() || "new", r.rawDealValue?.trim() || "—"]
+            .join(" · "),
+        );
+        setImportProgress(null);
+        setImportPreview({
+          kind: "csv",
+          validRows: valid,
+          skippedMissingName,
+          totalDataRows: dataRows.length,
+          previewLines,
+        });
       } catch {
         showToast("Could not read CSV. Try again.", "error");
       }
@@ -701,21 +728,28 @@ export function PipelineScreen({ navigation }: Props) {
     async (whatsappMode?: "all" | "name_phone") => {
       if (!importPreview || !user?.id || !isSupabaseConfigured()) return;
       setImportConfirmBusy(true);
+      setImportProgress(null);
       try {
         const supabase = getSupabaseClient();
         if (importPreview.kind === "csv") {
-          await batchInsertImportedLeads(
+          const skippedName = importPreview.skippedMissingName;
+          const result = await batchInsertImportedLeads(
             supabase,
             importPreview.validRows,
             user.id,
             PIPELINE_IMPORT_WORKSPACE_ID,
+            {
+              onProgress: (done, tot) => setImportProgress({ done, total: tot }),
+            },
           );
-          const n = importPreview.validRows.length;
-          const skipped = importPreview.skippedCount;
-          showToast(`${n} leads imported successfully`, "success");
-          if (skipped > 0) {
-            showToast(`${skipped} rows skipped`, "info");
-          }
+          const parts: string[] = [];
+          if (skippedName > 0) parts.push(`${skippedName} skipped (missing name)`);
+          if (result.skippedDuplicate > 0) parts.push(`${result.skippedDuplicate} skipped (duplicate phone)`);
+          const summary =
+            parts.length > 0
+              ? `Imported ${result.inserted} leads. ${parts.join("; ")}.`
+              : `Successfully imported ${result.inserted} leads!`;
+          showToast(summary, "success");
         } else {
           const toInsert =
             whatsappMode === "name_phone"
@@ -736,6 +770,7 @@ export function PipelineScreen({ navigation }: Props) {
         showToast("Import failed. Try again.", "error");
       } finally {
         setImportConfirmBusy(false);
+        setImportProgress(null);
       }
     },
     [importPreview, user?.id, showToast, bumpLeadsDataRevision],
@@ -744,6 +779,7 @@ export function PipelineScreen({ navigation }: Props) {
   const closeImportPreview = useCallback(() => {
     if (importConfirmBusy) return;
     setImportPreview(null);
+    setImportProgress(null);
   }, [importConfirmBusy]);
 
   const filteredLeads = useMemo(() => {
@@ -1823,25 +1859,50 @@ export function PipelineScreen({ navigation }: Props) {
           <View style={styles.modalSheet}>
             {importPreview?.kind === "csv" ? (
               <>
-                <Text style={styles.modalTitle}>Import leads</Text>
+                <Text style={styles.modalTitle}>Import leads from CSV</Text>
                 <Text style={styles.importModalSummary}>
-                  {importPreview.validRows.length} leads ready to import
+                  Found {importPreview.validRows.length} lead{importPreview.validRows.length === 1 ? "" : "s"} in CSV
+                  {importPreview.totalDataRows > 0
+                    ? ` (${importPreview.totalDataRows} data row${importPreview.totalDataRows === 1 ? "" : "s"})`
+                    : ""}
                 </Text>
-                <Text style={styles.importModalSkipped}>
-                  {importPreview.skippedCount} rows skipped (missing name or phone)
-                </Text>
+                {importPreview.skippedMissingName > 0 ? (
+                  <Text style={styles.importModalSkipped}>
+                    {importPreview.skippedMissingName} row{importPreview.skippedMissingName === 1 ? "" : "s"} will be
+                    skipped (missing name)
+                  </Text>
+                ) : null}
+                <Text style={styles.importModalPreviewLabel}>Preview (first 3)</Text>
                 <ScrollView
                   style={styles.importModalScroll}
                   contentContainerStyle={styles.importModalScrollContent}
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
                 >
-                  {importPreview.previewNames.map((name, i) => (
+                  {importPreview.previewLines.map((line, i) => (
                     <Text key={`imp-prev-${i}`} style={styles.importModalPreviewRow}>
-                      {name}
+                      {line}
                     </Text>
                   ))}
                 </ScrollView>
+                {importProgress ? (
+                  <Text style={styles.importProgressText}>
+                    Importing… {importProgress.done}/{importProgress.total || importPreview.validRows.length}
+                  </Text>
+                ) : null}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.importModalSecondaryBtn,
+                    pressed && styles.modalOptionPressed,
+                    importConfirmBusy && styles.headerActionDisabled,
+                  ]}
+                  onPress={() => void onDownloadImportTemplate()}
+                  disabled={importConfirmBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download CSV template"
+                >
+                  <Text style={styles.importModalSecondaryBtnText}>Download template</Text>
+                </Pressable>
                 <Pressable
                   style={({ pressed }) => [
                     styles.importModalPrimaryBtn,
@@ -1851,12 +1912,12 @@ export function PipelineScreen({ navigation }: Props) {
                   onPress={() => void onConfirmImport()}
                   disabled={importConfirmBusy}
                   accessibilityRole="button"
-                  accessibilityLabel="Confirm import"
+                  accessibilityLabel="Import all leads from CSV"
                 >
                   {importConfirmBusy ? (
                     <ActivityIndicator color={colors.text} />
                   ) : (
-                    <Text style={styles.importModalPrimaryBtnText}>Import</Text>
+                    <Text style={styles.importModalPrimaryBtnText}>Import all</Text>
                   )}
                 </Pressable>
                 <Pressable
@@ -2196,6 +2257,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 6,
     paddingBottom: 4,
+  },
+  importModalPreviewLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  importProgressText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   importModalStatBlock: {
     color: colors.textMuted,
