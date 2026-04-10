@@ -13,10 +13,21 @@ export type MainTabParamList = {
   Settings: undefined;
 };
 
+/** Optional fields when opening Add Lead from voice-to-lead “edit before saving”. */
+export type AddLeadPrefill = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  notes?: string;
+  dealValueText?: string;
+  priority?: "low" | "medium" | "high";
+};
+
 export type RootStackParamList = {
   Login: undefined;
   Main: NavigatorScreenParams<MainTabParamList>;
-  AddLead: undefined;
+  AddLead: { prefill?: AddLeadPrefill } | undefined;
   /** Lead profile (read-only fields + AI). App title: “Lead”. */
   LeadDetail: { leadId: string; focusAi?: boolean };
   /** Same screen as `LeadDetail` — alias for docs / deep links; use `LeadDetail` in code. */

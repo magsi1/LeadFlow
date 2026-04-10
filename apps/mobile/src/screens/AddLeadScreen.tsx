@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useMemo, useState } from "react";
+import type { RouteProp } from "@react-navigation/native";
+import { useRoute } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +23,9 @@ import { formatPkrEnIn, parseDealValueInput } from "../lib/dealValue";
 import { findDuplicateLeadByNameAndPhone } from "../lib/leadDuplicate";
 import { normalizeLeadPriorityForDb } from "../lib/leadPriority";
 import { getSupabaseClient, isSupabaseConfigured, supabaseEnvError } from "../lib/supabaseClient";
-import type { RootStackScreenProps } from "../navigation/types";
+import type { RootStackParamList, RootStackScreenProps } from "../navigation/types";
+
+type AddLeadRouteProp = RouteProp<RootStackParamList, "AddLead">;
 import { useAppStore } from "../state/useAppStore";
 import { useAppPreferencesStore } from "../state/useAppPreferencesStore";
 import { colors } from "../theme/colors";
@@ -95,6 +99,7 @@ function validateAddLeadFields(input: {
 }
 
 export function AddLeadScreen({ navigation }: Props) {
+  const route = useRoute<AddLeadRouteProp>();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const bumpLeadsDataRevision = useAppStore((s) => s.bumpLeadsDataRevision);
@@ -118,9 +123,27 @@ export function AddLeadScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
+      if (route.params?.prefill != null) return;
       setPriority(defaultLeadPriority);
-    }, [defaultLeadPriority]),
+    }, [defaultLeadPriority, route.params?.prefill]),
   );
+
+  useEffect(() => {
+    const prefill = route.params?.prefill;
+    if (!prefill) return;
+    if (typeof prefill.name === "string" && prefill.name.trim()) setName(prefill.name.trim());
+    if (typeof prefill.phone === "string" && prefill.phone.trim()) setPhone(prefill.phone.trim());
+    if (typeof prefill.email === "string" && prefill.email.trim()) setEmail(prefill.email.trim());
+    if (typeof prefill.city === "string" && prefill.city.trim()) setCity(prefill.city.trim());
+    if (typeof prefill.notes === "string" && prefill.notes.trim()) setNotes(prefill.notes.trim());
+    if (typeof prefill.dealValueText === "string" && prefill.dealValueText.trim()) {
+      setDealValueText(prefill.dealValueText.trim());
+    }
+    if (prefill.priority === "low" || prefill.priority === "medium" || prefill.priority === "high") {
+      setPriority(prefill.priority);
+    }
+    navigation.setParams({ prefill: undefined });
+  }, [route.params?.prefill, navigation]);
 
   const selectedSource = SOURCE_OPTIONS.find((o) => o.id === sourceId) ?? SOURCE_OPTIONS[0];
   const sourceDb = selectedSource.db;

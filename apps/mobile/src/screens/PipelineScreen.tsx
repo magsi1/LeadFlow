@@ -20,6 +20,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useToast } from "../context/ToastContext";
 import { AddLeadFab } from "../components/AddLeadFab";
+import { VoiceToLeadFab } from "../components/VoiceToLeadFab";
+import { VoiceToLeadFlow } from "../components/VoiceToLeadFlow";
 import { ChatSearchResultsPanel } from "../components/ChatSearchResultsPanel";
 import { Card } from "../components/Card";
 import { LeadAvatar } from "../components/LeadAvatar";
@@ -372,6 +374,7 @@ export function PipelineScreen({ navigation }: Props) {
   const [importPickingBusy, setImportPickingBusy] = useState(false);
   const [importConfirmBusy, setImportConfirmBusy] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [voiceToLeadOpen, setVoiceToLeadOpen] = useState(false);
   const webFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [searchMode, setSearchMode] = useState<"leads" | "chats">("leads");
@@ -2003,7 +2006,9 @@ export function PipelineScreen({ navigation }: Props) {
           </View>
         </View>
       </Modal>
+      <VoiceToLeadFab bottomExtra={4} onPress={() => setVoiceToLeadOpen(true)} />
       <AddLeadFab bottomExtra={4} />
+      <VoiceToLeadFlow visible={voiceToLeadOpen} onClose={() => setVoiceToLeadOpen(false)} />
     </View>
   );
 }
